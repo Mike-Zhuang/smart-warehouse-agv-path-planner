@@ -70,7 +70,19 @@ CBS 多车模式可以按下面的顺序体验：
 
 - 已完成：地图校验、通行规则、字符地图、JSON 协议、命令行入口和核心算法测试。
 - 已完成：单车 A*、Dijkstra、往返路径拼接、CBS 多车协同规划。
-- 后续增强：FastAPI 接口、Web 前端、路径动画和服务器部署。
+- 已完成：FastAPI 接口、Web 前端、路径动画和服务器部署脚本。
+
+## 服务器部署
+
+生产环境使用 Nginx 托管前端静态文件，并将 `/api` 反向代理到仅监听本机的 FastAPI
+服务 `127.0.0.1:18080`。服务器部署脚本位于：
+
+```bash
+./deploy/sync-deploy.sh
+```
+
+脚本会通过 GitHub 代理拉取 `main` 分支、构建 C++ 核心、运行核心测试、构建前端、
+同步静态文件并重启 systemd 服务。正式服务器可以使用宝塔计划任务每 10 分钟执行一次。
 
 设计记录见 [docs/decision-log.md](docs/decision-log.md)。
 核心算法说明见 [docs/core-algorithms.md](docs/core-algorithms.md)。
