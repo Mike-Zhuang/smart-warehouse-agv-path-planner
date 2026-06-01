@@ -16,7 +16,27 @@ class BackendApiTests(unittest.TestCase):
         self.assertTrue(health()["cppCoreReady"])
 
     def test_sample_maps(self) -> None:
-        self.assertEqual(len(get_sample_maps()), 3)
+        samples = get_sample_maps()
+        self.assertEqual(len(samples), 3)
+        for sample in samples:
+            request = PlannerRequest(**sample["request"])
+            self.assertEqual(len(request.grid), 20)
+            self.assertTrue(all(len(row) == 15 for row in request.grid))
+
+    def test_sample_map_results(self) -> None:
+        samples = {sample["id"]: sample["request"] for sample in get_sample_maps()}
+        no_path = plan(PlannerRequest(**samples["no-path"]))
+        self.assertFalse(no_path["success"])
+
+        cbs = plan(PlannerRequest(**samples["cbs-crossing"]))
+        self.assertTrue(cbs["success"])
+        self.assertGreater(cbs["resolvedConflictCount"], 0)
+        self.assertTrue(any(
+            timeline[index] == timeline[index - 1]
+            for robot in cbs["robots"]
+            for timeline in [robot["timeline"]]
+            for index in range(1, len(timeline))
+        ))
 
     def test_single_robot_plan(self) -> None:
         result = plan(PlannerRequest(mode="single", algorithm="astar", roundTrip=True, grid=[[3, 0], [0, 4]]))

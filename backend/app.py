@@ -24,17 +24,7 @@ def sample_maps() -> list[dict[str, Any]]:
     return [
         {"id": "warehouse-default", "name": "默认仓库", "description": "20 × 15 标准仓库地图。", "request": load_json("sample-map.json")},
         {"id": "no-path", "name": "无解地图", "description": "目标货架被包围，用于验证失败提示。", "request": load_json("no-path-map.json")},
-        {
-            "id": "cbs-crossing", "name": "多车交叉口", "description": "两辆 AGV 在中心点发生冲突，CBS 会安排等待。",
-            "request": {
-                "mode": "multi", "algorithm": "cbs", "allowDiagonal": False, "preventCornerCutting": True,
-                "grid": [[1, 0, 1], [0, 0, 0], [1, 0, 1]],
-                "robots": [
-                    {"id": "agv-01", "start": [1, 0], "target": [1, 2], "roundTrip": False},
-                    {"id": "agv-02", "start": [0, 1], "target": [2, 1], "roundTrip": False},
-                ],
-            },
-        },
+        {"id": "cbs-crossing", "name": "多车交叉口", "description": "20 × 15 仓库十字通道，两辆 AGV 会在中心区域发生冲突。", "request": load_json("cbs-crossing-map.json")},
     ]
 
 
@@ -56,4 +46,3 @@ def plan(request: PlannerRequest) -> dict[str, Any]:
         raise HTTPException(status_code=504, detail=str(error)) from error
     except PlannerClientError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
-

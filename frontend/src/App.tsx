@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  ArrowRight, Box, Bot, Boxes, Download, Eraser, FastForward, Flag,
+  ArrowRight, Box, Bot, Boxes, Download, Eraser, FastForward, Flag, Github,
   Grid3X3, Hash, Pause, Play, Plus, RefreshCw, RotateCcw, Route, Save, Settings2,
   ShieldAlert, Sparkles, Square, Target, Trash2, Upload, Warehouse,
 } from "lucide-react";
@@ -11,8 +11,8 @@ import {
 } from "./grid-utils";
 import type {
   CellType, CompareResult, DisplayMode, Grid, Mode, MultiRobotResult, PathResult,
-  PlannerRequest, Point, RobotPointField, RobotTask, RoundTripResult, SampleMap,
-  SingleAlgorithm,
+  PlannerRequest, Point, RobotPointField, RobotTask, RobotTaskMarker, RoundTripResult,
+  RouteDirection, SampleMap, SingleAlgorithm,
 } from "./types";
 
 const CELL_META = [
@@ -26,7 +26,7 @@ const CELL_META = [
 const EMPTY_SINGLE_GRID = paintCell(paintCell(createGrid(), [19, 1], 3), [2, 8], 4);
 type PlannerResult = RoundTripResult | PathResult | CompareResult | MultiRobotResult;
 type RoutePhase = "outbound" | "return" | "trail";
-interface RouteMarker { arrow: string; phase: RoutePhase; label?: string }
+interface RouteMarker { direction: RouteDirection; phase: RoutePhase; label?: string }
 
 function isCompareResult(result: PlannerResult | null): result is CompareResult {
   return Boolean(result && "algorithm" in result && result.algorithm === "compare");
@@ -52,13 +52,13 @@ function animationSource(result: PlannerResult | null): { expanded: Point[]; pat
   return { expanded: selected.expandedOrder, path: selected.path };
 }
 
-function arrow_between(from: Point, to: Point): string {
+function directionBetween(from: Point, to: Point): RouteDirection {
   const row = to[0] - from[0];
   const col = to[1] - from[1];
   return new Map([
-    ["-1,0", "↑"], ["1,0", "↓"], ["0,-1", "←"], ["0,1", "→"],
-    ["-1,-1", "↖"], ["-1,1", "↗"], ["1,-1", "↙"], ["1,1", "↘"], ["0,0", "•"],
-  ]).get(`${row},${col}`) ?? "•";
+    ["-1,0", "up"], ["1,0", "down"], ["0,-1", "left"], ["0,1", "right"],
+    ["-1,-1", "up-left"], ["-1,1", "up-right"], ["1,-1", "down-left"], ["1,1", "down-right"], ["0,0", "wait"],
+  ] as Array<[string, RouteDirection]>).get(`${row},${col}`) ?? "wait";
 }
 
 function append_marker(markers: Map<string, RouteMarker[]>, point: Point, marker: RouteMarker) {
@@ -75,13 +75,10 @@ function single_route_markers(result: PlannerResult | null, visible_points: numb
   const visible = path.slice(0, visible_points);
   for (let index = 0; index + 1 < visible.length; index += 1) {
     append_marker(markers, visible[index], {
-      arrow: arrow_between(visible[index], visible[index + 1]),
+      direction: directionBetween(visible[index], visible[index + 1]),
       phase: index < outbound_segments ? "outbound" : "return",
     });
   }
-  if (visible[0]) append_marker(markers, visible[0], { arrow: "S", phase: "outbound", label: "起" });
-  const current_point = visible[visible.length - 1];
-  if (current_point) append_marker(markers, current_point, { arrow: "●", phase: "return", label: "当前位置" });
   return markers;
 }
 
@@ -92,7 +89,7 @@ function multi_route_markers(result: PlannerResult | null, frame: number): Map<s
     const visible = robot.timeline.slice(0, Math.min(frame + 1, robot.timeline.length));
     for (let index = 0; index + 1 < visible.length; index += 1) {
       append_marker(markers, visible[index], {
-        arrow: arrow_between(visible[index], visible[index + 1]),
+        direction: directionBetween(visible[index], visible[index + 1]),
         phase: "trail",
         label: robot.id.replace("agv-", ""),
       });
@@ -135,7 +132,11 @@ export function App() {
   const importRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    fetchSamples().then(setSamples).catch((requestError) => setError(requestError.message));
+    fetchSamples().then((items) => {
+      setSamples(items);
+      const defaultSample = items.find((item) => item.id === "warehouse-default");
+      if (defaultSample) loadSample(defaultSample);
+    }).catch((requestError) => setError(requestError.message));
   }, []);
 
   useEffect(() => {
@@ -169,6 +170,20 @@ export function App() {
     return single_route_markers(result, visibleCount);
   }, [animationIndex, result, singleAnimation]);
 
+  const routeEndpoints = useMemo(() => {
+    if (!result || isMultiResult(result)) return new Map<string, string[]>();
+    const endpoints = new Map<string, string[]>();
+    const path = singleAnimation.path;
+    const selected = isCompareResult(result) ? result.astar : result;
+    const targetPoint = isRoundTripResult(selected) ? selected.outbound.path[selected.outbound.path.length - 1] : path[path.length - 1];
+    if (path[0]) endpoints.set(pointKey(path[0]), ["S"]);
+    if (targetPoint) endpoints.set(pointKey(targetPoint), [...(endpoints.get(pointKey(targetPoint)) ?? []), "T"]);
+    const visibleCount = Math.max(0, animationIndex - singleAnimation.expanded.length);
+    const currentPoint = path[Math.min(visibleCount - 1, path.length - 1)];
+    if (currentPoint) endpoints.set(pointKey(currentPoint), [...(endpoints.get(pointKey(currentPoint)) ?? []), "●"]);
+    return endpoints;
+  }, [animationIndex, result, singleAnimation]);
+
   const currentRobots = useMemo(() => {
     if (!isMultiResult(result)) return [];
     return result.robots.map((robot) => ({
@@ -176,6 +191,18 @@ export function App() {
       point: robot.timeline[Math.min(animationIndex, robot.timeline.length - 1)],
     }));
   }, [animationIndex, result]);
+
+  const taskMarkers = useMemo(() => {
+    if (mode !== "multi") return [];
+    return robots.flatMap((robot, index): RobotTaskMarker[] => {
+      const number = String(index + 1);
+      const selected = robot.id === selectedRobot;
+      return [
+        { robotId: robot.id, label: `S${number}`, point: robot.start, role: "start", selected },
+        { robotId: robot.id, label: `T${number}`, point: robot.target, role: "target", selected },
+      ];
+    });
+  }, [mode, robots, selectedRobot]);
 
   function clearResult() {
     setResult(null);
@@ -193,7 +220,14 @@ export function App() {
 
   function handleCellPaint(point: Point) {
     if (mode === "multi") {
+      const [row, col] = point;
+      if (grid[row]?.[col] === 1 || grid[row]?.[col] === 2) {
+        clearResult();
+        setError("AGV 起点或目标点不能设置在货架或障碍物上");
+        return;
+      }
       setRobots((items) => updateRobotPoint(items, selectedRobot, robotPointField, point));
+      if (robotPointField === "start") setRobotPointField("target");
       clearResult();
       return;
     }
@@ -267,6 +301,7 @@ export function App() {
     const robot = { id: `agv-${String(index).padStart(2, "0")}`, start: [0, 0] as Point, target: [0, 1] as Point, roundTrip: true };
     setRobots([...robots, robot]);
     setSelectedRobot(robot.id);
+    setRobotPointField("start");
     clearResult();
   }
 
@@ -277,6 +312,7 @@ export function App() {
       <header className="topbar">
         <div className="brand"><span className="corner-square" /><Bot size={24} /><b>AGV ROUTE LAB</b></div>
         <div className="topbar-copy">智能仓储机器人路径规划系统</div>
+        <a className="github-link" href="https://github.com/Mike-Zhuang/smart-warehouse-agv-path-planner" target="_blank" rel="noreferrer"><Github size={16} />GitHub</a>
         <div className="status-dot"><span /> C++ CORE ONLINE</div>
       </header>
 
@@ -306,7 +342,7 @@ export function App() {
               </Field>
               <Check label="规划返程路线" checked={roundTrip} onChange={setRoundTrip} />
             </>
-          ) : <RobotEditor robots={robots} selectedRobot={selectedRobot} field={robotPointField} onSelect={setSelectedRobot} onField={setRobotPointField} onChange={(items) => { setRobots(items); clearResult(); }} onAdd={addRobot} onLoadSample={loadCbsSample} />}
+          ) : <RobotEditor robots={robots} selectedRobot={selectedRobot} field={robotPointField} onSelect={(id) => { setSelectedRobot(id); setRobotPointField("start"); clearResult(); }} onField={setRobotPointField} onChange={(items) => { setRobots(items); clearResult(); }} onAdd={addRobot} onLoadSample={loadCbsSample} />}
           <Check label="允许斜向移动" checked={allowDiagonal} onChange={setAllowDiagonal} />
           <Check label="禁止穿越墙角" checked={preventCornerCutting} onChange={setPreventCornerCutting} />
 
@@ -353,6 +389,8 @@ export function App() {
               {grid.flatMap((row, rowIndex) => row.map((cell, colIndex) => (
                 <GridCell key={`${rowIndex}-${colIndex}`} cell={cell} point={[rowIndex, colIndex]} displayMode={displayMode}
                   expanded={expandedKeys.has(`${rowIndex}-${colIndex}`)} routeMarkers={routeMarkers.get(`${rowIndex}-${colIndex}`) ?? []}
+                  routeEndpoints={routeEndpoints.get(`${rowIndex}-${colIndex}`) ?? []}
+                  taskMarkers={taskMarkers.filter((marker) => pointKey(marker.point) === `${rowIndex}-${colIndex}`)}
                   robots={currentRobots.filter((robot) => pointKey(robot.point) === `${rowIndex}-${colIndex}`)}
                   onDown={() => { setDragging(true); handleCellPaint([rowIndex, colIndex]); }}
                   onEnter={() => dragging && handleCellPaint([rowIndex, colIndex])} />
@@ -360,8 +398,8 @@ export function App() {
             </div>
           </div>
           <div className="legend">{CELL_META.map(({ value, label }) => <span key={value}><i className={`legend-${value}`} />{value} · {label}</span>)}</div>
-          {result && !isMultiResult(result) && <div className="route-legend"><b>路线方向</b><span><i className="route-outbound">→</i>去程</span><span><i className="route-return">←</i>返程</span><small>箭头所在格表示下一步移动方向；重叠路线会同时显示两枚箭头。</small></div>}
-          {isMultiResult(result) && <div className="route-legend"><b>多车轨迹</b><span><i className="route-trail">→</i>已走轨迹</span><small>数字为 AGV 编号，黑底标记是当前所在位置。</small></div>}
+          {result && !isMultiResult(result) && <div className="route-legend"><b>路线方向</b><span><i className="route-outbound">→</i>去程</span><span><i className="route-return">←</i>返程</span><small>SVG 箭头支持八方向移动；重叠路线会错位显示。</small></div>}
+          {isMultiResult(result) && <div className="route-legend"><b>多车轨迹</b><span><i className="route-trail">→</i>已走轨迹</span><span><i className="route-wait">Ⅱ</i>等待</span><small>箭头数字为 AGV 编号，黑底标记是当前位置。</small></div>}
         </section>
 
         <aside className="panel results-panel">
@@ -389,7 +427,6 @@ export function App() {
           )}
         </aside>
       </main>
-      <footer>SMART WAREHOUSE AGV PATH PLANNER · C++ CORE / FASTAPI / REACT</footer>
     </div>
   );
 }
@@ -406,21 +443,36 @@ function Check({ label, checked, onChange }: { label: string; checked: boolean; 
   return <label className="check"><input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} /><span>{label}</span></label>;
 }
 
-function GridCell({ cell, point, displayMode, expanded, routeMarkers, robots, onDown, onEnter }: {
+function GridCell({ cell, point, displayMode, expanded, routeMarkers, routeEndpoints, taskMarkers, robots, onDown, onEnter }: {
   cell: CellType; point: Point; displayMode: DisplayMode; expanded: boolean; routeMarkers: RouteMarker[];
-  robots: Array<{ id: string; point: Point }>; onDown: () => void; onEnter: () => void;
+  routeEndpoints: string[]; taskMarkers: RobotTaskMarker[]; robots: Array<{ id: string; point: Point }>;
+  onDown: () => void; onEnter: () => void;
 }) {
   const Icon = CELL_META[cell].icon;
+  const visibleRouteMarkers = routeMarkers.slice(-3);
+  const visibleTaskMarkers = taskMarkers.slice(0, 3);
   return <button className={`grid-cell cell-${cell} ${expanded ? "expanded" : ""} ${routeMarkers.length ? "has-route" : ""}`}
     title={`[${point.join(", ")}] ${CELL_META[cell].label}`} onMouseDown={onDown} onMouseEnter={onEnter}>
     {displayMode === "number" ? cell : <Icon size={14} />}
-    {routeMarkers.length > 0 && <span className="route-markers">{routeMarkers.slice(-3).map((marker, index) =>
-      <i key={`${marker.arrow}-${index}`} className={`route-marker ${marker.phase}`} title={marker.label}>
-        {marker.phase === "trail" && marker.label ? `${marker.label}${marker.arrow}` : marker.arrow}
-      </i>,
-    )}</span>}
+    {visibleRouteMarkers.length > 0 && <span className="route-markers">{visibleRouteMarkers.map((marker, index) =>
+      <RouteArrow key={`${marker.direction}-${index}`} marker={marker} />,
+    )}{routeMarkers.length > visibleRouteMarkers.length && <i className="marker-overflow">+{routeMarkers.length - visibleRouteMarkers.length}</i>}</span>}
+    {routeEndpoints.length > 0 && <span className="route-endpoints">{routeEndpoints.map((label) => <i key={label}>{label}</i>)}</span>}
+    {visibleTaskMarkers.length > 0 && <span className="task-markers">{visibleTaskMarkers.map((marker) =>
+      <i key={`${marker.robotId}-${marker.role}`} className={marker.selected ? "selected" : ""}>{marker.label}</i>,
+    )}{taskMarkers.length > visibleTaskMarkers.length && <i>+{taskMarkers.length - visibleTaskMarkers.length}</i>}</span>}
     {robots.length > 0 && <b className="robot-token">{robots.map((robot) => robot.id.replace("agv-", "")).join("/")}</b>}
   </button>;
+}
+
+function RouteArrow({ marker }: { marker: RouteMarker }) {
+  const rotation = { up: -90, down: 90, left: 180, right: 0, "up-left": -135, "up-right": -45, "down-left": 135, "down-right": 45, wait: 0 }[marker.direction];
+  return <i className={`route-marker ${marker.phase} direction-${marker.direction}`} title={marker.label} data-direction={marker.direction}>
+    {marker.phase === "trail" && marker.label && <small>{marker.label}</small>}
+    {marker.direction === "wait"
+      ? <svg viewBox="0 0 16 16" aria-label="等待"><path d="M5 3v10M11 3v10" /></svg>
+      : <svg viewBox="0 0 16 16" style={{ transform: `rotate(${rotation}deg)` }} aria-label={marker.direction}><path d="M2 8h10M8 4l4 4-4 4" /></svg>}
+  </i>;
 }
 
 function MetricCards({ success, cost, expanded, message }: { success: boolean; cost: number; expanded: number; message: string }) {
@@ -459,8 +511,12 @@ function RobotEditor({ robots, selectedRobot, field, onSelect, onField, onChange
     </div>
     <div className="robot-editor-head"><b>AGV 任务表</b><button onClick={onAdd}><Plus size={15} />新增</button></div>
     {robots.map((robot) => <div className={`robot-row ${robot.id === selectedRobot ? "selected" : ""}`} key={robot.id} onClick={() => onSelect(robot.id)}>
-      <Bot size={15} /><input value={robot.id} onChange={(event) => onChange(robots.map((item) => item === robot ? { ...item, id: event.target.value } : item))} />
-      <button disabled={robots.length === 1} onClick={(event) => { event.stopPropagation(); onChange(robots.filter((item) => item !== robot)); }}><Trash2 size={14} /></button>
+      <Bot size={15} /><div className="robot-row-main">
+        <input aria-label={`${robot.id} 编号`} value={robot.id} onChange={(event) => onChange(robots.map((item) => item === robot ? { ...item, id: event.target.value } : item))} />
+        <small>S [{robot.start.join(", ")}] · T [{robot.target.join(", ")}]</small>
+      </div>
+      <label className="robot-round-trip" onClick={(event) => event.stopPropagation()}><input type="checkbox" checked={robot.roundTrip} onChange={(event) => onChange(robots.map((item) => item === robot ? { ...item, roundTrip: event.target.checked } : item))} />返程</label>
+      <button aria-label={`删除 ${robot.id}`} disabled={robots.length === 1} onClick={(event) => { event.stopPropagation(); onChange(robots.filter((item) => item !== robot)); }}><Trash2 size={14} /></button>
     </div>)}
     {selected && <><div className="point-select-hint">正在为 <b>{selected.id}</b> 设置 <strong>{field === "start" ? "起点" : "目标点"}</strong>，请点击地图格子</div><div className="segmented compact">
       <button className={field === "start" ? "active" : ""} onClick={() => onField("start")}><Flag size={14} />设置起点</button>

@@ -5,6 +5,15 @@ export type Mode = "single" | "multi";
 export type SingleAlgorithm = "astar" | "dijkstra" | "compare";
 export type DisplayMode = "number" | "icon";
 export type RobotPointField = "start" | "target";
+export type RouteDirection = "up" | "down" | "left" | "right" | "up-left" | "up-right" | "down-left" | "down-right" | "wait";
+
+export interface RobotTaskMarker {
+  robotId: string;
+  label: string;
+  point: Point;
+  role: RobotPointField;
+  selected: boolean;
+}
 
 export interface RobotTask {
   id: string;
