@@ -74,6 +74,7 @@ git checkout -B main origin/main
 git reset --hard origin/main
 
 export UV_PYTHON_INSTALL_DIR=/opt/agv-path-planner-python
+export UV_DEFAULT_INDEX=https://mirrors.aliyun.com/pypi/simple/
 uv python install 3.11
 if [[ ! -x "$APP_DIR/.venv/bin/python" ]] || ! "$APP_DIR/.venv/bin/python" --version 2>&1 | grep -q 'Python 3.11'; then
   rm -rf "$APP_DIR/.venv"
