@@ -43,6 +43,11 @@ function manhattanDistance(first: Point, second: Point) {
   return Math.abs(first[0] - second[0]) + Math.abs(first[1] - second[1]);
 }
 
+function heatmapColor(distance: number) {
+  const palette = ["#76b900", "#98cf45", "#b6de78", "#d3ecaa", "#edf7da"];
+  return palette[Math.min(palette.length - 1, Math.floor(distance / 5))];
+}
+
 function timelineCost(points: Point[]) {
   return points.slice(1).reduce((cost, point, index) => {
     const previous = points[index];
@@ -504,7 +509,7 @@ export function App() {
                   routeEndpoints={routeEndpoints.get(`${rowIndex}-${colIndex}`) ?? []}
                   taskMarkers={taskMarkers.filter((marker) => pointKey(marker.point) === `${rowIndex}-${colIndex}`)}
                   robots={currentRobots.filter((robot) => pointKey(robot.point) === `${rowIndex}-${colIndex}`)}
-                  heatValue={showHeatmap && heatmapTarget && cell !== 1 && cell !== 2 ? manhattanDistance([rowIndex, colIndex], heatmapTarget) : null}
+                  heatValue={showHeatmap && heatmapTarget && cell === 0 ? manhattanDistance([rowIndex, colIndex], heatmapTarget) : null}
                   onDown={() => { setDragging(true); handleCellPaint([rowIndex, colIndex]); }}
                   onEnter={() => { setHoveredPoint([rowIndex, colIndex]); if (dragging) handleCellPaint([rowIndex, colIndex]); }} />
               )))}
@@ -566,10 +571,10 @@ function GridCell({ cell, point, displayMode, expanded, routeMarkers, routeEndpo
   const Icon = CELL_META[cell].icon;
   const visibleRouteMarkers = routeMarkers.slice(-3);
   const visibleTaskMarkers = taskMarkers.slice(0, 3);
-  return <button className={`grid-cell cell-${cell} ${expanded ? "expanded" : ""} ${routeMarkers.length ? "has-route" : ""}`}
+  return <button className={`grid-cell cell-${cell} ${expanded && heatValue === null ? "expanded" : ""} ${routeMarkers.length ? "has-route" : ""}`}
     title={`[${point.join(", ")}] ${CELL_META[cell].label}`} onMouseDown={onDown} onMouseEnter={onEnter}>
     {displayMode === "number" ? cell : <Icon size={14} />}
-    {heatValue !== null && <span className="heatmap-value" style={{ backgroundColor: `rgba(118, 185, 0, ${Math.max(0.18, 0.72 - heatValue * 0.025)})` }}>{heatValue}</span>}
+    {heatValue !== null && <span className="heatmap-value" style={{ backgroundColor: heatmapColor(heatValue) }}>h{heatValue}</span>}
     {visibleRouteMarkers.length > 0 && <span className="route-markers">{visibleRouteMarkers.map((marker, index) =>
       <RouteArrow key={`${marker.direction}-${index}`} marker={marker} />,
     )}{routeMarkers.length > visibleRouteMarkers.length && <i className="marker-overflow">+{routeMarkers.length - visibleRouteMarkers.length}</i>}</span>}

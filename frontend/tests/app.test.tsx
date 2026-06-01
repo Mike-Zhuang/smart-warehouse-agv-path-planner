@@ -108,8 +108,15 @@ describe("App", () => {
   it("shows optional Manhattan heatmap values", () => {
     render(<App />);
     expect(document.querySelector(".heatmap-value")).toBeNull();
-    fireEvent.click(screen.getByRole("checkbox", { name: "显示曼哈顿热力层" }));
-    expect(document.querySelector(".heatmap-value")).toBeTruthy();
+    const heatmapToggle = screen.getByRole("checkbox", { name: "显示曼哈顿热力层" });
+    fireEvent.click(heatmapToggle);
+    expect(document.querySelector(".heatmap-value")?.textContent).toMatch(/^h\d+$/);
+    expect(document.querySelectorAll(".grid-cell .heatmap-value .heatmap-value")).toHaveLength(0);
+    fireEvent.click(heatmapToggle);
+    expect(document.querySelector(".heatmap-value")).toBeNull();
+    fireEvent.click(heatmapToggle);
+    expect(document.querySelectorAll(".grid-cell .heatmap-value").length).toBeGreaterThan(0);
+    expect(document.querySelectorAll(".grid-cell .heatmap-value .heatmap-value")).toHaveLength(0);
   });
 
   it("uses separate outbound and return colors for each CBS robot", async () => {
