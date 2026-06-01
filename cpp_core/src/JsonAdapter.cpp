@@ -113,12 +113,15 @@ nlohmann::json JsonAdapter::toJson(const RoundTripResult& result) {
 nlohmann::json JsonAdapter::toJson(const MultiRobotResult& result) {
     nlohmann::json robots = nlohmann::json::array();
     for (const auto& robot : result.robots) {
-        robots.push_back({
+        nlohmann::json robot_json = {
             {"id", robot.id},
             {"timeline", path_to_json(robot.timeline)},
-            {"pathCost", robot.path_cost},
-            {"returnStartTimeStep", robot.return_start_time_step}
-        });
+            {"pathCost", robot.path_cost}
+        };
+        robot_json["returnStartTimeStep"] = robot.return_start_time_step.has_value()
+            ? nlohmann::json(*robot.return_start_time_step)
+            : nlohmann::json(nullptr);
+        robots.push_back(robot_json);
     }
 
     return {
