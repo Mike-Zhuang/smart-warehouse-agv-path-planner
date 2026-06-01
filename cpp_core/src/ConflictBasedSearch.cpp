@@ -184,23 +184,31 @@ bool can_stay_at_goal(const std::vector<Constraint>& constraints, const std::siz
     return true;
 }
 
-std::vector<Point> reconstruct_timeline(
+RobotPath reconstruct_robot_path(
+    const std::string& id, const int path_cost,
     TimelineState current,
     const std::unordered_map<TimelineState, TimelineState, TimelineStateHash>& parent) {
-    std::vector<Point> timeline;
-    timeline.push_back(current.point);
+    std::vector<TimelineState> states;
+    states.push_back(current);
 
     while (current.time_step > 0) {
         const auto iterator = parent.find(current);
         if (iterator == parent.end()) {
-            return {};
+            return RobotPath{id, {}, path_cost, std::nullopt};
         }
         current = iterator->second;
-        timeline.push_back(current.point);
+        states.push_back(current);
     }
 
-    std::reverse(timeline.begin(), timeline.end());
-    return timeline;
+    std::reverse(states.begin(), states.end());
+    RobotPath path{id, {}, path_cost, std::nullopt};
+    for (const TimelineState& state : states) {
+        path.timeline.push_back(state.point);
+        if (state.returning && !path.return_start_time_step.has_value()) {
+            path.return_start_time_step = state.time_step;
+        }
+    }
+    return path;
 }
 
 std::optional<RobotPath> plan_robot(
@@ -235,7 +243,7 @@ std::optional<RobotPath> plan_robot(
 
         if (is_goal_state(current.state, task) &&
             can_stay_at_goal(constraints, robot_index, current.state.point, current.state.time_step)) {
-            return RobotPath{task.id, reconstruct_timeline(current.state, parent), current.g_cost};
+            return reconstruct_robot_path(task.id, current.g_cost, current.state, parent);
         }
 
         if (current.state.time_step >= multi_robot_options.max_time_steps) {

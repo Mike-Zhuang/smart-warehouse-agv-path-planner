@@ -4,6 +4,7 @@
 #include "PathResult.hpp"
 #include "SearchPlanner.hpp"
 
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -18,6 +19,7 @@ struct RobotPath {
     std::string id;
     std::vector<Point> timeline;
     int path_cost = 0;
+    std::optional<int> return_start_time_step;
 };
 
 struct MultiRobotResult {

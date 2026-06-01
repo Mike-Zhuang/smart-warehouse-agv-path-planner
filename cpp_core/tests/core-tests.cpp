@@ -159,6 +159,14 @@ void testDijkstraAndRoundTrip() {
     assert(astar.found && dijkstra.found);
     assert(astar.path_cost == dijkstra.path_cost);
     assert(astar.expanded_count <= dijkstra.expanded_count);
+    for (const SearchTraceEntry& entry : astar.search_trace) {
+        assert(entry.h_cost == SearchPlanner::manhattanDistance(entry.point, Point{3, 3}));
+        assert(entry.f_cost == entry.g_cost + entry.h_cost);
+    }
+    for (const SearchTraceEntry& entry : dijkstra.search_trace) {
+        assert(entry.h_cost == 0);
+        assert(entry.f_cost == entry.g_cost);
+    }
 
     const GridMap diagonal_grid({{3, 0}, {0, 4}});
     const RoundTripResult round_trip =
@@ -239,6 +247,7 @@ void testConflictBasedSearchWithoutConflict() {
     assert(result.success);
     assert(result.robots.size() == 2);
     assert(result.resolved_conflict_count == 0);
+    assert(!result.robots.front().return_start_time_step.has_value());
     assert_conflict_free(result.robots);
 }
 
@@ -300,6 +309,7 @@ void testConflictBasedSearchRoundTrip() {
     assert((result.robots.front().timeline.front() == Point{0, 0}));
     assert((result.robots.front().timeline[1] == Point{0, 1}));
     assert((result.robots.front().timeline.back() == Point{0, 0}));
+    assert(result.robots.front().return_start_time_step == 1);
 }
 
 void testConflictBasedSearchTimeStepLimit() {

@@ -11,8 +11,8 @@ import {
 } from "./grid-utils";
 import type {
   CellType, CompareResult, DisplayMode, Grid, Mode, MultiRobotResult, PathResult,
-  PlannerRequest, Point, RobotPointField, RobotTask, RobotTaskMarker, RoundTripResult,
-  RouteDirection, SampleMap, SingleAlgorithm,
+  PathStyle, PlannerRequest, Point, RobotPointField, RobotTask, RobotTaskMarker, RoundTripResult,
+  RouteDirection, SampleMap, SearchTraceEntry, SingleAlgorithm,
 } from "./types";
 
 const CELL_META = [
@@ -26,7 +26,30 @@ const CELL_META = [
 const EMPTY_SINGLE_GRID = paintCell(paintCell(createGrid(), [19, 1], 3), [2, 8], 4);
 type PlannerResult = RoundTripResult | PathResult | CompareResult | MultiRobotResult;
 type RoutePhase = "outbound" | "return" | "trail";
-interface RouteMarker { direction: RouteDirection; phase: RoutePhase; label?: string }
+interface RouteMarker { direction: RouteDirection; phase: RoutePhase; label?: string; robotIndex?: number }
+interface CurveRoute { key: string; points: Point[]; phase: RoutePhase; robotIndex?: number }
+type Observation = {
+  kind: "single"; algorithm: SingleAlgorithm; trace?: SearchTraceEntry; target?: Point; phase: string; expanded: number; totalExpanded: number;
+} | {
+  kind: "multi"; id: string; point: Point; target: Point; phase: string; g: number; h: number; timeStep: number; waiting: boolean; conflicts: number;
+};
+
+const ROBOT_COLORS = [
+  ["#76b900", "#355400"], ["#5ba8ff", "#174f91"], ["#ffad42", "#9b5000"], ["#b995ff", "#5e3599"],
+  ["#52d4cc", "#14766f"], ["#ff7777", "#9d2929"], ["#f58bd8", "#953878"], ["#e2bf49", "#806711"],
+] as const;
+
+function manhattanDistance(first: Point, second: Point) {
+  return Math.abs(first[0] - second[0]) + Math.abs(first[1] - second[1]);
+}
+
+function timelineCost(points: Point[]) {
+  return points.slice(1).reduce((cost, point, index) => {
+    const previous = points[index];
+    if (pointKey(point) === pointKey(previous)) return cost + 1;
+    return cost + (point[0] !== previous[0] && point[1] !== previous[1] ? 2 : 1);
+  }, 0);
+}
 
 function isCompareResult(result: PlannerResult | null): result is CompareResult {
   return Boolean(result && "algorithm" in result && result.algorithm === "compare");
@@ -85,13 +108,14 @@ function single_route_markers(result: PlannerResult | null, visible_points: numb
 function multi_route_markers(result: PlannerResult | null, frame: number): Map<string, RouteMarker[]> {
   const markers = new Map<string, RouteMarker[]>();
   if (!isMultiResult(result)) return markers;
-  result.robots.forEach((robot) => {
+  result.robots.forEach((robot, robotIndex) => {
     const visible = robot.timeline.slice(0, Math.min(frame + 1, robot.timeline.length));
     for (let index = 0; index + 1 < visible.length; index += 1) {
       append_marker(markers, visible[index], {
         direction: directionBetween(visible[index], visible[index + 1]),
-        phase: "trail",
+        phase: robot.returnStartTimeStep !== null && index >= robot.returnStartTimeStep ? "return" : "outbound",
         label: robot.id.replace("agv-", ""),
+        robotIndex,
       });
     }
   });
@@ -105,6 +129,21 @@ function metricResult(result: PlannerResult | null) {
     : { success: result.found, cost: result.pathCost, expanded: result.expandedCount, message: result.message };
 }
 
+function curvePath(points: Point[]): string {
+  const centers = points.filter((point, index) => index === 0 || pointKey(point) !== pointKey(points[index - 1]))
+    .map(([row, col]) => [col + 0.5, row + 0.5] as const);
+  if (centers.length < 2) return "";
+  if (centers.length === 2) return `M ${centers[0][0]} ${centers[0][1]} L ${centers[1][0]} ${centers[1][1]}`;
+  let path = `M ${centers[0][0]} ${centers[0][1]}`;
+  for (let index = 1; index < centers.length - 1; index += 1) {
+    const current = centers[index];
+    const next = centers[index + 1];
+    path += ` Q ${current[0]} ${current[1]} ${(current[0] + next[0]) / 2} ${(current[1] + next[1]) / 2}`;
+  }
+  const last = centers[centers.length - 1];
+  return `${path} T ${last[0]} ${last[1]}`;
+}
+
 export function App() {
   const [mode, setMode] = useState<Mode>("single");
   const [grid, setGrid] = useState<Grid>(EMPTY_SINGLE_GRID);
@@ -112,6 +151,9 @@ export function App() {
   const [cols, setCols] = useState(DEFAULT_COLS);
   const [brush, setBrush] = useState<CellType>(1);
   const [displayMode, setDisplayMode] = useState<DisplayMode>("number");
+  const [pathStyle, setPathStyle] = useState<PathStyle>("arrows");
+  const [showHeatmap, setShowHeatmap] = useState(false);
+  const [hoveredPoint, setHoveredPoint] = useState<Point | null>(null);
   const [algorithm, setAlgorithm] = useState<SingleAlgorithm>("astar");
   const [roundTrip, setRoundTrip] = useState(true);
   const [allowDiagonal, setAllowDiagonal] = useState(true);
@@ -203,6 +245,47 @@ export function App() {
       ];
     });
   }, [mode, robots, selectedRobot]);
+
+  const heatmapTarget = useMemo((): Point | null => {
+    if (mode === "multi") {
+      const selectedTask = robots.find((robot) => robot.id === selectedRobot);
+      if (!selectedTask) return null;
+      const plannedRobot = isMultiResult(result) ? result.robots.find((robot) => robot.id === selectedRobot) : null;
+      return plannedRobot?.returnStartTimeStep !== null && plannedRobot?.returnStartTimeStep !== undefined && animationIndex >= plannedRobot.returnStartTimeStep
+        ? selectedTask.start : selectedTask.target;
+    }
+    if (!result || isMultiResult(result)) return grid.flatMap((cells, rowIndex) => cells.map((cell, colIndex) => cell === 4 ? [rowIndex, colIndex] as Point : null)).find(Boolean) ?? null;
+    const selected = isCompareResult(result) ? result.astar : result;
+    if (!isRoundTripResult(selected)) return selected.path[selected.path.length - 1] ?? null;
+    const expandedCount = selected.outbound.expandedOrder.length + selected.returnTrip.expandedOrder.length;
+    if (animationIndex < expandedCount) {
+      return animationIndex >= selected.outbound.expandedOrder.length ? selected.outbound.path[0] : selected.outbound.path[selected.outbound.path.length - 1];
+    }
+    const visiblePathCount = animationIndex - expandedCount;
+    return visiblePathCount > selected.outbound.path.length ? selected.outbound.path[0] : selected.outbound.path[selected.outbound.path.length - 1];
+  }, [animationIndex, grid, mode, result, robots, selectedRobot]);
+
+  const curveRoutes = useMemo((): CurveRoute[] => {
+    if (!result) return [];
+    if (isMultiResult(result)) {
+      return result.robots.flatMap((robot, robotIndex) => {
+        const points = robot.timeline.slice(0, Math.min(animationIndex + 1, robot.timeline.length));
+        const boundary = robot.returnStartTimeStep ?? points.length;
+        return [
+          { key: `${robot.id}-outbound`, points: points.slice(0, Math.min(points.length, boundary + 1)), phase: "outbound" as const, robotIndex },
+          { key: `${robot.id}-return`, points: points.slice(boundary), phase: "return" as const, robotIndex },
+        ];
+      });
+    }
+    const selected = isCompareResult(result) ? result.astar : result;
+    const visibleCount = Math.max(0, animationIndex - singleAnimation.expanded.length);
+    const points = singleAnimation.path.slice(0, visibleCount);
+    const boundary = isRoundTripResult(selected) ? selected.outbound.path.length - 1 : points.length;
+    return [
+      { key: "single-outbound", points: points.slice(0, Math.min(points.length, boundary + 1)), phase: "outbound" },
+      { key: "single-return", points: points.slice(boundary), phase: "return" },
+    ];
+  }, [animationIndex, result, singleAnimation]);
 
   function clearResult() {
     setResult(null);
@@ -306,6 +389,29 @@ export function App() {
   }
 
   const metrics = metricResult(result);
+  const observation = useMemo(() => {
+    if (!result) return null;
+    if (isMultiResult(result)) {
+      const robot = result.robots.find((item) => item.id === selectedRobot) ?? result.robots[0];
+      const task = robots.find((item) => item.id === robot?.id);
+      if (!robot || !task) return null;
+      const timeStep = Math.min(animationIndex, robot.timeline.length - 1);
+      const visible = robot.timeline.slice(0, timeStep + 1);
+      const point = visible[visible.length - 1];
+      const returning = robot.returnStartTimeStep !== null && timeStep >= robot.returnStartTimeStep;
+      const target = returning ? task.start : task.target;
+      return { kind: "multi" as const, id: robot.id, point, target, phase: returning ? "返程" : "去程", g: timelineCost(visible), h: manhattanDistance(point, target), timeStep, waiting: visible.length > 1 && pointKey(point) === pointKey(visible[visible.length - 2]), conflicts: result.resolvedConflictCount };
+    }
+    const selected = isCompareResult(result) ? result.astar : result;
+    const outboundTrace = isRoundTripResult(selected) ? selected.outbound.searchTrace ?? [] : selected.searchTrace ?? [];
+    const returnTrace = isRoundTripResult(selected) ? selected.returnTrip.searchTrace ?? [] : [];
+    const traces = [...outboundTrace, ...returnTrace];
+    const trace = traces[Math.min(animationIndex, traces.length) - 1] as SearchTraceEntry | undefined;
+    const isReturning = isRoundTripResult(selected) && animationIndex > outboundTrace.length;
+    const phase = animationIndex <= traces.length ? (isReturning ? "返程搜索" : "去程搜索") : "路径播放";
+    const target = isRoundTripResult(selected) ? (isReturning ? selected.outbound.path[0] : selected.outbound.path[selected.outbound.path.length - 1]) : selected.path[selected.path.length - 1];
+    return { kind: "single" as const, algorithm: isCompareResult(result) ? "astar" : algorithm, trace, target, phase, expanded: Math.min(animationIndex, traces.length), totalExpanded: traces.length };
+  }, [algorithm, animationIndex, result, robots, selectedRobot]);
 
   return (
     <div className="app-shell">
@@ -345,6 +451,7 @@ export function App() {
           ) : <RobotEditor robots={robots} selectedRobot={selectedRobot} field={robotPointField} onSelect={(id) => { setSelectedRobot(id); setRobotPointField("start"); clearResult(); }} onField={setRobotPointField} onChange={(items) => { setRobots(items); clearResult(); }} onAdd={addRobot} onLoadSample={loadCbsSample} />}
           <Check label="允许斜向移动" checked={allowDiagonal} onChange={setAllowDiagonal} />
           <Check label="禁止穿越墙角" checked={preventCornerCutting} onChange={setPreventCornerCutting} />
+          <Check label="显示曼哈顿热力层" checked={showHeatmap} onChange={setShowHeatmap} />
 
           <PanelTitle icon={Grid3X3} title="地图工具" />
           <div className="size-row">
@@ -379,27 +486,33 @@ export function App() {
         <section className="map-section">
           <div className="map-toolbar">
             <div><b>WAREHOUSE GRID</b><span>{rows} 行 × {cols} 列</span></div>
-            <div className="segmented compact">
+            <div className="map-toolbar-actions"><div className="segmented compact">
               <button className={displayMode === "number" ? "active" : ""} onClick={() => setDisplayMode("number")}><Hash size={15} />数字</button>
               <button className={displayMode === "icon" ? "active" : ""} onClick={() => setDisplayMode("icon")}><Box size={15} />图标</button>
-            </div>
+            </div><div className="segmented compact path-style-switch">
+              <button className={pathStyle === "arrows" ? "active" : ""} onClick={() => setPathStyle("arrows")}>箭头</button>
+              <button className={pathStyle === "curves" ? "active" : ""} onClick={() => setPathStyle("curves")}>曲线</button>
+              <button className={pathStyle === "both" ? "active" : ""} onClick={() => setPathStyle("both")}>组合</button>
+            </div></div>
           </div>
           <div className="grid-scroll">
-            <div className="warehouse-grid" style={{ gridTemplateColumns: `repeat(${cols}, minmax(22px, 1fr))` }} onMouseLeave={() => setDragging(false)} onMouseUp={() => setDragging(false)}>
+            <div className="warehouse-grid" style={{ gridTemplateColumns: `repeat(${cols}, minmax(22px, 1fr))` }} onMouseLeave={() => { setDragging(false); setHoveredPoint(null); }} onMouseUp={() => setDragging(false)}>
+              {(pathStyle === "curves" || pathStyle === "both") && <CurveOverlay routes={curveRoutes} rows={rows} cols={cols} />}
               {grid.flatMap((row, rowIndex) => row.map((cell, colIndex) => (
                 <GridCell key={`${rowIndex}-${colIndex}`} cell={cell} point={[rowIndex, colIndex]} displayMode={displayMode}
-                  expanded={expandedKeys.has(`${rowIndex}-${colIndex}`)} routeMarkers={routeMarkers.get(`${rowIndex}-${colIndex}`) ?? []}
+                  expanded={expandedKeys.has(`${rowIndex}-${colIndex}`)} routeMarkers={pathStyle === "curves" ? [] : routeMarkers.get(`${rowIndex}-${colIndex}`) ?? []}
                   routeEndpoints={routeEndpoints.get(`${rowIndex}-${colIndex}`) ?? []}
                   taskMarkers={taskMarkers.filter((marker) => pointKey(marker.point) === `${rowIndex}-${colIndex}`)}
                   robots={currentRobots.filter((robot) => pointKey(robot.point) === `${rowIndex}-${colIndex}`)}
+                  heatValue={showHeatmap && heatmapTarget && cell !== 1 && cell !== 2 ? manhattanDistance([rowIndex, colIndex], heatmapTarget) : null}
                   onDown={() => { setDragging(true); handleCellPaint([rowIndex, colIndex]); }}
-                  onEnter={() => dragging && handleCellPaint([rowIndex, colIndex])} />
+                  onEnter={() => { setHoveredPoint([rowIndex, colIndex]); if (dragging) handleCellPaint([rowIndex, colIndex]); }} />
               )))}
             </div>
           </div>
           <div className="legend">{CELL_META.map(({ value, label }) => <span key={value}><i className={`legend-${value}`} />{value} · {label}</span>)}</div>
           {result && !isMultiResult(result) && <div className="route-legend"><b>路线方向</b><span><i className="route-outbound">→</i>去程</span><span><i className="route-return">←</i>返程</span><small>SVG 箭头支持八方向移动；重叠路线会错位显示。</small></div>}
-          {isMultiResult(result) && <div className="route-legend"><b>多车轨迹</b><span><i className="route-trail">→</i>已走轨迹</span><span><i className="route-wait">Ⅱ</i>等待</span><small>箭头数字为 AGV 编号，黑底标记是当前位置。</small></div>}
+          {isMultiResult(result) && <div className="route-legend"><b>多车轨迹</b><span><i className="route-wait">Ⅱ</i>等待</span>{result.robots.map((robot, index) => <span key={robot.id}><i style={{ background: ROBOT_COLORS[index % ROBOT_COLORS.length][0] }} /><i style={{ background: ROBOT_COLORS[index % ROBOT_COLORS.length][1] }} />{robot.id} 去 / 返</span>)}<small>浅色为去程，深色为返程；箭头数字为 AGV 编号。</small></div>}
         </section>
 
         <aside className="panel results-panel">
@@ -425,6 +538,7 @@ export function App() {
               <small>帧 {Math.min(animationIndex, maxTimeline)} / {maxTimeline}</small>
             </>
           )}
+          <TeachingPanel observation={observation} hoveredPoint={hoveredPoint} heatmapTarget={heatmapTarget} />
         </aside>
       </main>
     </div>
@@ -443,9 +557,10 @@ function Check({ label, checked, onChange }: { label: string; checked: boolean; 
   return <label className="check"><input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} /><span>{label}</span></label>;
 }
 
-function GridCell({ cell, point, displayMode, expanded, routeMarkers, routeEndpoints, taskMarkers, robots, onDown, onEnter }: {
+function GridCell({ cell, point, displayMode, expanded, routeMarkers, routeEndpoints, taskMarkers, robots, heatValue, onDown, onEnter }: {
   cell: CellType; point: Point; displayMode: DisplayMode; expanded: boolean; routeMarkers: RouteMarker[];
   routeEndpoints: string[]; taskMarkers: RobotTaskMarker[]; robots: Array<{ id: string; point: Point }>;
+  heatValue: number | null;
   onDown: () => void; onEnter: () => void;
 }) {
   const Icon = CELL_META[cell].icon;
@@ -454,6 +569,7 @@ function GridCell({ cell, point, displayMode, expanded, routeMarkers, routeEndpo
   return <button className={`grid-cell cell-${cell} ${expanded ? "expanded" : ""} ${routeMarkers.length ? "has-route" : ""}`}
     title={`[${point.join(", ")}] ${CELL_META[cell].label}`} onMouseDown={onDown} onMouseEnter={onEnter}>
     {displayMode === "number" ? cell : <Icon size={14} />}
+    {heatValue !== null && <span className="heatmap-value" style={{ backgroundColor: `rgba(118, 185, 0, ${Math.max(0.18, 0.72 - heatValue * 0.025)})` }}>{heatValue}</span>}
     {visibleRouteMarkers.length > 0 && <span className="route-markers">{visibleRouteMarkers.map((marker, index) =>
       <RouteArrow key={`${marker.direction}-${index}`} marker={marker} />,
     )}{routeMarkers.length > visibleRouteMarkers.length && <i className="marker-overflow">+{routeMarkers.length - visibleRouteMarkers.length}</i>}</span>}
@@ -467,12 +583,49 @@ function GridCell({ cell, point, displayMode, expanded, routeMarkers, routeEndpo
 
 function RouteArrow({ marker }: { marker: RouteMarker }) {
   const rotation = { up: -90, down: 90, left: 180, right: 0, "up-left": -135, "up-right": -45, "down-left": 135, "down-right": 45, wait: 0 }[marker.direction];
-  return <i className={`route-marker ${marker.phase} direction-${marker.direction}`} title={marker.label} data-direction={marker.direction}>
-    {marker.phase === "trail" && marker.label && <small>{marker.label}</small>}
+  const color = marker.robotIndex === undefined ? undefined : ROBOT_COLORS[marker.robotIndex % ROBOT_COLORS.length][marker.phase === "return" ? 1 : 0];
+  return <i className={`route-marker ${marker.phase} direction-${marker.direction}`} title={marker.label} data-direction={marker.direction} style={color ? { color, borderColor: color } : undefined}>
+    {marker.robotIndex !== undefined && marker.label && <small style={{ background: color }}>{marker.label}</small>}
     {marker.direction === "wait"
       ? <svg viewBox="0 0 16 16" aria-label="等待"><path d="M5 3v10M11 3v10" /></svg>
       : <svg viewBox="0 0 16 16" style={{ transform: `rotate(${rotation}deg)` }} aria-label={marker.direction}><path d="M2 8h10M8 4l4 4-4 4" /></svg>}
   </i>;
+}
+
+function CurveOverlay({ routes, rows, cols }: { routes: CurveRoute[]; rows: number; cols: number }) {
+  return <svg className="curve-overlay" viewBox={`0 0 ${cols} ${rows}`} preserveAspectRatio="none" aria-label="曲线路径">
+    {routes.map((route) => {
+      const path = curvePath(route.points);
+      if (!path) return null;
+      const color = route.robotIndex === undefined
+        ? (route.phase === "return" ? "#000" : "#76b900")
+        : ROBOT_COLORS[route.robotIndex % ROBOT_COLORS.length][route.phase === "return" ? 1 : 0];
+      return <path key={route.key} d={path} style={{ stroke: color }} />;
+    })}
+  </svg>;
+}
+
+function TeachingPanel({ observation, hoveredPoint, heatmapTarget }: { observation: Observation | null; hoveredPoint: Point | null; heatmapTarget: Point | null }) {
+  return <div className="teaching-panel">
+    <PanelTitle icon={Grid3X3} title="算法观察" />
+    {observation?.kind === "single" && <div className="teaching-grid">
+      <Metric label="阶段" value={observation.phase} /><Metric label="算法" value={observation.algorithm.toUpperCase()} />
+      <Metric label="当前节点" value={observation.trace ? `[${observation.trace.point.join(", ")}]` : "-"} />
+      <Metric label="目标" value={observation.target ? `[${observation.target.join(", ")}]` : "-"} />
+      <Metric label="g 实际代价" value={observation.trace?.gCost ?? "-"} /><Metric label="h 曼哈顿距离" value={observation.trace?.hCost ?? "-"} />
+      <Metric label="f = g + h" value={observation.trace?.fCost ?? "-"} /><Metric label="扩展进度" value={`${observation.expanded}/${observation.totalExpanded}`} />
+      <small>{observation.algorithm === "dijkstra" ? "Dijkstra 不使用启发函数，因此 h = 0，f = g。" : "A* 使用 f = g + h 决定优先扩展顺序。"}</small>
+    </div>}
+    {observation?.kind === "multi" && <div className="teaching-grid">
+      <Metric label="AGV" value={observation.id} /><Metric label="阶段" value={observation.phase} />
+      <Metric label="当前位置" value={`[${observation.point.join(", ")}]`} /><Metric label="目标" value={`[${observation.target.join(", ")}]`} />
+      <Metric label="时间步" value={observation.timeStep} /><Metric label="累计代价" value={observation.g} />
+      <Metric label="h 曼哈顿距离" value={observation.h} /><Metric label="动作" value={observation.waiting ? "原地等待" : "移动"} />
+      <small>已解决冲突：{observation.conflicts}</small>
+    </div>}
+    {!observation && <small>运行规划后，这里会解释当前搜索节点的 g、h 和 f。</small>}
+    {hoveredPoint && heatmapTarget && <div className="hover-observation">悬浮格 [{hoveredPoint.join(", ")}]：h = {manhattanDistance(hoveredPoint, heatmapTarget)}</div>}
+  </div>;
 }
 
 function MetricCards({ success, cost, expanded, message }: { success: boolean; cost: number; expanded: number; message: string }) {
@@ -480,7 +633,7 @@ function MetricCards({ success, cost, expanded, message }: { success: boolean; c
     <div className="metric-grid"><Metric label="总代价" value={cost} /><Metric label="扩展节点" value={expanded} /></div></>;
 }
 
-function Metric({ label, value }: { label: string; value: number }) {
+function Metric({ label, value }: { label: string; value: React.ReactNode }) {
   return <div className="metric-card"><strong>{value}</strong><span>{label}</span></div>;
 }
 

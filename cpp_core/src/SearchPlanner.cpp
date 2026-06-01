@@ -111,6 +111,8 @@ PathResult SearchPlanner::plan(const Point& start, const Point& target,
 
         closed[current.point.row][current.point.col] = true;
         result.expanded_order.push_back(current.point);
+        result.search_trace.push_back(
+            SearchTraceEntry{current.point, current.g_cost, current.h_cost, current.f_cost()});
 
         if (current.point == target) {
             result.found = true;

@@ -24,6 +24,19 @@ nlohmann::json path_to_json(const std::vector<Point>& path) {
     return output;
 }
 
+nlohmann::json search_trace_to_json(const std::vector<SearchTraceEntry>& trace) {
+    nlohmann::json output = nlohmann::json::array();
+    for (const auto& entry : trace) {
+        output.push_back({
+            {"point", point_to_json(entry.point)},
+            {"gCost", entry.g_cost},
+            {"hCost", entry.h_cost},
+            {"fCost", entry.f_cost}
+        });
+    }
+    return output;
+}
+
 }  // namespace
 
 PlannerRequest JsonAdapter::parseRequest(const nlohmann::json& input) {
@@ -80,7 +93,8 @@ nlohmann::json JsonAdapter::toJson(const PathResult& result) {
         {"path", path_to_json(result.path)},
         {"pathCost", result.path_cost},
         {"expandedCount", result.expanded_count},
-        {"expandedOrder", path_to_json(result.expanded_order)}
+        {"expandedOrder", path_to_json(result.expanded_order)},
+        {"searchTrace", search_trace_to_json(result.search_trace)}
     };
 }
 
@@ -102,7 +116,8 @@ nlohmann::json JsonAdapter::toJson(const MultiRobotResult& result) {
         robots.push_back({
             {"id", robot.id},
             {"timeline", path_to_json(robot.timeline)},
-            {"pathCost", robot.path_cost}
+            {"pathCost", robot.path_cost},
+            {"returnStartTimeStep", robot.return_start_time_step}
         });
     }
 

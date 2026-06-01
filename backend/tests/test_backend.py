@@ -31,6 +31,7 @@ class BackendApiTests(unittest.TestCase):
         cbs = plan(PlannerRequest(**samples["cbs-crossing"]))
         self.assertTrue(cbs["success"])
         self.assertGreater(cbs["resolvedConflictCount"], 0)
+        self.assertTrue(all(robot["returnStartTimeStep"] is not None for robot in cbs["robots"]))
         self.assertTrue(any(
             timeline[index] == timeline[index - 1]
             for robot in cbs["robots"]
@@ -42,6 +43,7 @@ class BackendApiTests(unittest.TestCase):
         result = plan(PlannerRequest(mode="single", algorithm="astar", roundTrip=True, grid=[[3, 0], [0, 4]]))
         self.assertTrue(result["success"])
         self.assertEqual(result["totalCost"], 4)
+        self.assertTrue(result["outbound"]["searchTrace"])
 
     def test_compare_plan(self) -> None:
         result = plan(PlannerRequest(mode="single", algorithm="compare", roundTrip=False, grid=[[3, 0], [0, 4]]))
@@ -58,6 +60,7 @@ class BackendApiTests(unittest.TestCase):
         ))
         self.assertTrue(result["success"])
         self.assertGreater(result["resolvedConflictCount"], 0)
+        self.assertTrue(all(robot["returnStartTimeStep"] is None for robot in result["robots"]))
 
     def test_invalid_grid(self) -> None:
         with self.assertRaises(ValidationError):

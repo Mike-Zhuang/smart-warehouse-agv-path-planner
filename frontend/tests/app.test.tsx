@@ -33,8 +33,8 @@ describe("App", () => {
         json: async () => ({
           success: true, message: "Round trip path found", totalCost: 4, totalExpandedCount: 4,
           fullPath: [[5, 5], [4, 5], [3, 6], [3, 7], [4, 8], [5, 8], [6, 7], [6, 6], [5, 5]],
-          outbound: { found: true, message: "Path found", path: [[5, 5], [4, 5], [3, 6], [3, 7], [4, 8]], pathCost: 8, expandedCount: 0, expandedOrder: [] },
-          returnTrip: { found: true, message: "Path found", path: [[4, 8], [5, 8], [6, 7], [6, 6], [5, 5]], pathCost: 8, expandedCount: 0, expandedOrder: [] },
+          outbound: { found: true, message: "Path found", path: [[5, 5], [4, 5], [3, 6], [3, 7], [4, 8]], pathCost: 8, expandedCount: 1, expandedOrder: [[5, 5]], searchTrace: [{ point: [5, 5], gCost: 0, hCost: 7, fCost: 7 }] },
+          returnTrip: { found: true, message: "Path found", path: [[4, 8], [5, 8], [6, 7], [6, 6], [5, 5]], pathCost: 8, expandedCount: 0, expandedOrder: [], searchTrace: [] },
         }),
       }));
     render(<App />);
@@ -44,6 +44,10 @@ describe("App", () => {
     expect(document.querySelectorAll(".route-marker").length).toBeGreaterThan(0);
     const directions = Array.from(document.querySelectorAll("[data-direction]")).map((marker) => marker.getAttribute("data-direction"));
     expect(new Set(directions)).toEqual(new Set(["up", "up-right", "right", "down-right", "down", "down-left", "left", "up-left"]));
+    expect(screen.getByText("算法观察")).toBeTruthy();
+    expect(screen.getByText("f = g + h")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "曲线" }));
+    expect(screen.getByLabelText("曲线路径")).toBeTruthy();
   });
 
   it("shows CBS onboarding guide", () => {
@@ -90,7 +94,7 @@ describe("App", () => {
         ok: true,
         json: async () => ({
           success: true, message: "Conflict-free paths found", totalCost: 3, resolvedConflictCount: 1,
-          robots: [{ id: "agv-01", timeline: [[0, 0], [0, 0], [0, 1]], pathCost: 2 }],
+          robots: [{ id: "agv-01", timeline: [[0, 0], [0, 0], [0, 1]], pathCost: 2, returnStartTimeStep: null }],
         }),
       }));
     render(<App />);
@@ -99,5 +103,34 @@ describe("App", () => {
     await waitFor(() => expect(screen.getByText("多车轨迹")).toBeTruthy());
     fireEvent.click(screen.getByRole("button", { name: "立即显示完整路线" }));
     expect(document.querySelector('[data-direction="wait"]')).toBeTruthy();
+  });
+
+  it("shows optional Manhattan heatmap values", () => {
+    render(<App />);
+    expect(document.querySelector(".heatmap-value")).toBeNull();
+    fireEvent.click(screen.getByRole("checkbox", { name: "显示曼哈顿热力层" }));
+    expect(document.querySelector(".heatmap-value")).toBeTruthy();
+  });
+
+  it("uses separate outbound and return colors for each CBS robot", async () => {
+    vi.stubGlobal("fetch", vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => [] })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          success: true, message: "Conflict-free paths found", totalCost: 4, resolvedConflictCount: 1,
+          robots: [
+            { id: "agv-01", timeline: [[0, 0], [0, 1], [0, 0]], pathCost: 2, returnStartTimeStep: 1 },
+            { id: "agv-02", timeline: [[1, 0], [1, 1], [1, 0]], pathCost: 2, returnStartTimeStep: 1 },
+          ],
+        }),
+      }));
+    render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: "CBS 多车" }));
+    fireEvent.click(screen.getByRole("button", { name: "运行路径规划" }));
+    await waitFor(() => expect(screen.getByText("多车轨迹")).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "立即显示完整路线" }));
+    const colors = new Set(Array.from(document.querySelectorAll<HTMLElement>(".route-marker")).map((marker) => marker.style.color));
+    expect(colors).toEqual(new Set(["rgb(118, 185, 0)", "rgb(53, 84, 0)", "rgb(91, 168, 255)", "rgb(23, 79, 145)"]));
   });
 });

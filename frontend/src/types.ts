@@ -4,6 +4,7 @@ export type Point = [number, number];
 export type Mode = "single" | "multi";
 export type SingleAlgorithm = "astar" | "dijkstra" | "compare";
 export type DisplayMode = "number" | "icon";
+export type PathStyle = "arrows" | "curves" | "both";
 export type RobotPointField = "start" | "target";
 export type RouteDirection = "up" | "down" | "left" | "right" | "up-left" | "up-right" | "down-left" | "down-right" | "wait";
 
@@ -40,6 +41,14 @@ export interface PathResult {
   pathCost: number;
   expandedCount: number;
   expandedOrder: Point[];
+  searchTrace: SearchTraceEntry[];
+}
+
+export interface SearchTraceEntry {
+  point: Point;
+  gCost: number;
+  hCost: number;
+  fCost: number;
 }
 
 export interface RoundTripResult {
@@ -61,7 +70,7 @@ export interface CompareResult {
 export interface MultiRobotResult {
   success: boolean;
   message: string;
-  robots: Array<{ id: string; timeline: Point[]; pathCost: number }>;
+  robots: Array<{ id: string; timeline: Point[]; pathCost: number; returnStartTimeStep: number | null }>;
   totalCost: number;
   resolvedConflictCount: number;
 }
