@@ -67,6 +67,15 @@ describe("App", () => {
     expect(within(screen.getByTitle("[1, 1] 通道")).getByText("T1")).toBeTruthy();
   });
 
+  it("allows painting obstacles while editing the CBS warehouse grid", () => {
+    render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: "CBS 多车" }));
+    fireEvent.click(screen.getByRole("button", { name: "编辑仓库底图" }));
+    fireEvent.click(screen.getByRole("button", { name: /2 障碍/ }));
+    fireEvent.mouseDown(screen.getByTitle("[1, 0] 通道"));
+    expect(screen.getByTitle("[1, 0] 障碍")).toBeTruthy();
+  });
+
   it("rejects CBS task points on shelves", () => {
     render(<App />);
     fireEvent.click(screen.getByRole("button", { name: /1 货架/ }));
@@ -117,6 +126,27 @@ describe("App", () => {
     fireEvent.click(heatmapToggle);
     expect(document.querySelectorAll(".grid-cell .heatmap-value").length).toBeGreaterThan(0);
     expect(document.querySelectorAll(".grid-cell .heatmap-value .heatmap-value")).toHaveLength(0);
+  });
+
+  it("keeps return expansion visible when it overlaps outbound expansion", async () => {
+    vi.stubGlobal("fetch", vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => [] })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          success: true, message: "Round trip path found", totalCost: 2, totalExpandedCount: 2,
+          fullPath: [[0, 0], [0, 1], [0, 0]],
+          outbound: { found: true, message: "Path found", path: [[0, 0], [0, 1]], pathCost: 1, expandedCount: 1, expandedOrder: [[0, 0]], searchTrace: [{ point: [0, 0], gCost: 0, hCost: 1, fCost: 1 }] },
+          returnTrip: { found: true, message: "Path found", path: [[0, 1], [0, 0]], pathCost: 1, expandedCount: 1, expandedOrder: [[0, 0]], searchTrace: [{ point: [0, 0], gCost: 1, hCost: 0, fCost: 1 }] },
+        }),
+      }));
+    render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: "运行路径规划" }));
+    await waitFor(() => expect(document.querySelector('[data-expansion-phase="return"]')).toBeTruthy());
+    const cell = screen.getByTitle("[0, 0] 通道");
+    expect(cell.querySelector('[data-expansion-phase="outbound"]')).toBeTruthy();
+    expect(cell.querySelector('[data-expansion-phase="return"]')).toBeTruthy();
+    expect(cell.querySelector(".return-expansion.current-expansion")).toBeTruthy();
   });
 
   it("uses separate outbound and return colors for each CBS robot", async () => {

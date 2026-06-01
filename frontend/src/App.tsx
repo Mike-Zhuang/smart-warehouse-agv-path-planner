@@ -26,8 +26,10 @@ const CELL_META = [
 const EMPTY_SINGLE_GRID = paintCell(paintCell(createGrid(), [19, 1], 3), [2, 8], 4);
 type PlannerResult = RoundTripResult | PathResult | CompareResult | MultiRobotResult;
 type RoutePhase = "outbound" | "return" | "trail";
+type MultiEditMode = "tasks" | "grid";
 interface RouteMarker { direction: RouteDirection; phase: RoutePhase; label?: string; robotIndex?: number }
 interface CurveRoute { key: string; points: Point[]; phase: RoutePhase; robotIndex?: number }
+interface ExpansionState { outbound: boolean; returning: boolean; currentPhase: "outbound" | "return" | null }
 type Observation = {
   kind: "single"; algorithm: SingleAlgorithm; trace?: SearchTraceEntry; target?: Point; phase: string; expanded: number; totalExpanded: number;
 } | {
@@ -173,6 +175,7 @@ export function App() {
   ]);
   const [selectedRobot, setSelectedRobot] = useState("agv-01");
   const [robotPointField, setRobotPointField] = useState<RobotPointField>("start");
+  const [multiEditMode, setMultiEditMode] = useState<MultiEditMode>("tasks");
   const [animationIndex, setAnimationIndex] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [speed, setSpeed] = useState(40);
@@ -206,9 +209,26 @@ export function App() {
     return () => window.clearTimeout(timer);
   }, [animationIndex, maxTimeline, playing, speed]);
 
-  const expandedKeys = useMemo(() => {
-    if (isMultiResult(result)) return new Set<string>();
-    return new Set(singleAnimation.expanded.slice(0, animationIndex).map(pointKey));
+  const expansionStates = useMemo(() => {
+    const states = new Map<string, ExpansionState>();
+    if (!result || isMultiResult(result)) return states;
+    const selected = isCompareResult(result) ? result.astar : result;
+    const outboundCount = isRoundTripResult(selected) ? selected.outbound.expandedOrder.length : singleAnimation.expanded.length;
+    const visible = singleAnimation.expanded.slice(0, animationIndex);
+    visible.forEach((point, index) => {
+      const key = pointKey(point);
+      const state = states.get(key) ?? { outbound: false, returning: false, currentPhase: null };
+      if (index < outboundCount) state.outbound = true;
+      else state.returning = true;
+      states.set(key, state);
+    });
+    const currentIndex = Math.min(animationIndex, singleAnimation.expanded.length) - 1;
+    if (currentIndex >= 0 && animationIndex <= singleAnimation.expanded.length) {
+      const key = pointKey(singleAnimation.expanded[currentIndex]);
+      const state = states.get(key);
+      if (state) state.currentPhase = currentIndex < outboundCount ? "outbound" : "return";
+    }
+    return states;
   }, [animationIndex, result, singleAnimation.expanded]);
 
   const routeMarkers = useMemo(() => {
@@ -307,7 +327,7 @@ export function App() {
   }
 
   function handleCellPaint(point: Point) {
-    if (mode === "multi") {
+    if (mode === "multi" && multiEditMode === "tasks") {
       const [row, col] = point;
       if (grid[row]?.[col] === 1 || grid[row]?.[col] === 2) {
         clearResult();
@@ -454,6 +474,10 @@ export function App() {
               <Check label="规划返程路线" checked={roundTrip} onChange={setRoundTrip} />
             </>
           ) : <RobotEditor robots={robots} selectedRobot={selectedRobot} field={robotPointField} onSelect={(id) => { setSelectedRobot(id); setRobotPointField("start"); clearResult(); }} onField={setRobotPointField} onChange={(items) => { setRobots(items); clearResult(); }} onAdd={addRobot} onLoadSample={loadCbsSample} />}
+          {mode === "multi" && <div className="segmented multi-edit-switch">
+            <button className={multiEditMode === "tasks" ? "active" : ""} onClick={() => setMultiEditMode("tasks")}>设置 AGV 任务点</button>
+            <button className={multiEditMode === "grid" ? "active" : ""} onClick={() => setMultiEditMode("grid")}>编辑仓库底图</button>
+          </div>}
           <Check label="允许斜向移动" checked={allowDiagonal} onChange={setAllowDiagonal} />
           <Check label="禁止穿越墙角" checked={preventCornerCutting} onChange={setPreventCornerCutting} />
           <Check label="显示曼哈顿热力层" checked={showHeatmap} onChange={setShowHeatmap} />
@@ -467,7 +491,7 @@ export function App() {
           </div>
           <div className="brush-grid">
             {CELL_META.map(({ value, label, icon: Icon }) => (
-              <button key={value} className={brush === value ? "brush active" : "brush"} onClick={() => setBrush(value)} disabled={mode === "multi"}>
+              <button key={value} className={brush === value ? "brush active" : "brush"} onClick={() => setBrush(value)} disabled={mode === "multi" && multiEditMode === "tasks"}>
                 <Icon size={15} /><b>{value}</b><span>{label}</span>
               </button>
             ))}
@@ -505,7 +529,7 @@ export function App() {
               {(pathStyle === "curves" || pathStyle === "both") && <CurveOverlay routes={curveRoutes} rows={rows} cols={cols} />}
               {grid.flatMap((row, rowIndex) => row.map((cell, colIndex) => (
                 <GridCell key={`${rowIndex}-${colIndex}`} cell={cell} point={[rowIndex, colIndex]} displayMode={displayMode}
-                  expanded={expandedKeys.has(`${rowIndex}-${colIndex}`)} routeMarkers={pathStyle === "curves" ? [] : routeMarkers.get(`${rowIndex}-${colIndex}`) ?? []}
+                  expansion={expansionStates.get(`${rowIndex}-${colIndex}`) ?? null} routeMarkers={pathStyle === "curves" ? [] : routeMarkers.get(`${rowIndex}-${colIndex}`) ?? []}
                   routeEndpoints={routeEndpoints.get(`${rowIndex}-${colIndex}`) ?? []}
                   taskMarkers={taskMarkers.filter((marker) => pointKey(marker.point) === `${rowIndex}-${colIndex}`)}
                   robots={currentRobots.filter((robot) => pointKey(robot.point) === `${rowIndex}-${colIndex}`)}
@@ -516,7 +540,7 @@ export function App() {
             </div>
           </div>
           <div className="legend">{CELL_META.map(({ value, label }) => <span key={value}><i className={`legend-${value}`} />{value} · {label}</span>)}</div>
-          {result && !isMultiResult(result) && <div className="route-legend"><b>路线方向</b><span><i className="route-outbound">→</i>去程</span><span><i className="route-return">←</i>返程</span><small>SVG 箭头支持八方向移动；重叠路线会错位显示。</small></div>}
+          {result && !isMultiResult(result) && <div className="route-legend"><b>路线方向</b><span><i className="route-outbound">→</i>去程</span><span><i className="route-return">←</i>返程</span><span><i className="search-legend-outbound" />去程搜索</span><span><i className="search-legend-return" />返程搜索</span><small>SVG 箭头支持八方向移动；重叠路线会错位显示，返程搜索使用虚线斜纹。</small></div>}
           {isMultiResult(result) && <div className="route-legend"><b>多车轨迹</b><span><i className="route-wait">Ⅱ</i>等待</span>{result.robots.map((robot, index) => <span key={robot.id}><i style={{ background: ROBOT_COLORS[index % ROBOT_COLORS.length][0] }} /><i style={{ background: ROBOT_COLORS[index % ROBOT_COLORS.length][1] }} />{robot.id} 去 / 返</span>)}<small>浅色为去程，深色为返程；箭头数字为 AGV 编号。</small></div>}
         </section>
 
@@ -562,8 +586,8 @@ function Check({ label, checked, onChange }: { label: string; checked: boolean; 
   return <label className="check"><input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} /><span>{label}</span></label>;
 }
 
-function GridCell({ cell, point, displayMode, expanded, routeMarkers, routeEndpoints, taskMarkers, robots, heatValue, onDown, onEnter }: {
-  cell: CellType; point: Point; displayMode: DisplayMode; expanded: boolean; routeMarkers: RouteMarker[];
+function GridCell({ cell, point, displayMode, expansion, routeMarkers, routeEndpoints, taskMarkers, robots, heatValue, onDown, onEnter }: {
+  cell: CellType; point: Point; displayMode: DisplayMode; expansion: ExpansionState | null; routeMarkers: RouteMarker[];
   routeEndpoints: string[]; taskMarkers: RobotTaskMarker[]; robots: Array<{ id: string; point: Point }>;
   heatValue: number | null;
   onDown: () => void; onEnter: () => void;
@@ -571,10 +595,12 @@ function GridCell({ cell, point, displayMode, expanded, routeMarkers, routeEndpo
   const Icon = CELL_META[cell].icon;
   const visibleRouteMarkers = routeMarkers.slice(-3);
   const visibleTaskMarkers = taskMarkers.slice(0, 3);
-  return <button className={`grid-cell cell-${cell} ${expanded && heatValue === null ? "expanded" : ""} ${routeMarkers.length ? "has-route" : ""}`}
+  return <button className={`grid-cell cell-${cell} ${routeMarkers.length ? "has-route" : ""}`}
     title={`[${point.join(", ")}] ${CELL_META[cell].label}`} onMouseDown={onDown} onMouseEnter={onEnter}>
     {displayMode === "number" ? cell : <Icon size={14} />}
     {heatValue !== null && <span className="heatmap-value" style={{ backgroundColor: heatmapColor(heatValue) }}>h{heatValue}</span>}
+    {expansion?.outbound && <span className={`search-expansion outbound-expansion ${expansion.currentPhase === "outbound" ? "current-expansion" : ""}`} data-expansion-phase="outbound" />}
+    {expansion?.returning && <span className={`search-expansion return-expansion ${expansion.currentPhase === "return" ? "current-expansion" : ""}`} data-expansion-phase="return" />}
     {visibleRouteMarkers.length > 0 && <span className="route-markers">{visibleRouteMarkers.map((marker, index) =>
       <RouteArrow key={`${marker.direction}-${index}`} marker={marker} />,
     )}{routeMarkers.length > visibleRouteMarkers.length && <i className="marker-overflow">+{routeMarkers.length - visibleRouteMarkers.length}</i>}</span>}
