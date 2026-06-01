@@ -78,13 +78,13 @@ python3 -m venv "$APP_DIR/.venv"
 
 cmake -S "$APP_DIR/cpp_core" -B "$APP_DIR/cpp_core/build"
 cmake --build "$APP_DIR/cpp_core/build" --parallel 2
-ctest --test-dir "$APP_DIR/cpp_core/build" --output-on-failure
+(cd "$APP_DIR/cpp_core/build" && ctest --output-on-failure)
 
 npm --prefix "$APP_DIR/frontend" ci --no-audit --no-fund --loglevel=error
 npm --prefix "$APP_DIR/frontend" run build
 
 install -d "$WEB_DIR"
-rsync -a --delete "$APP_DIR/frontend/dist/" "$WEB_DIR/"
+rsync -a --delete --exclude=.user.ini --exclude=.htaccess "$APP_DIR/frontend/dist/" "$WEB_DIR/"
 install_service
 systemctl restart "$SERVICE_NAME"
 wait_for_api
