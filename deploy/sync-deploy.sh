@@ -73,8 +73,13 @@ fi
 git checkout -B main origin/main
 git reset --hard origin/main
 
-python3 -m venv "$APP_DIR/.venv"
-"$APP_DIR/.venv/bin/pip" install --disable-pip-version-check --quiet -r "$APP_DIR/backend/requirements.txt"
+export UV_PYTHON_INSTALL_DIR=/opt/agv-path-planner-python
+uv python install 3.11
+if [[ ! -x "$APP_DIR/.venv/bin/python" ]] || ! "$APP_DIR/.venv/bin/python" --version 2>&1 | grep -q 'Python 3.11'; then
+  rm -rf "$APP_DIR/.venv"
+  uv venv --python 3.11 "$APP_DIR/.venv"
+fi
+uv pip install --python "$APP_DIR/.venv/bin/python" -r "$APP_DIR/backend/requirements.txt"
 
 cmake -S "$APP_DIR/cpp_core" -B "$APP_DIR/cpp_core/build"
 cmake --build "$APP_DIR/cpp_core/build" --parallel 2
