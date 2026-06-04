@@ -30,6 +30,8 @@ describe("App", () => {
     fireEvent.click(screen.getByRole("button", { name: "3D 仓库" }));
     expect(await screen.findByLabelText("Three.js 3D 仓库视图")).toBeTruthy();
     expect(await screen.findByLabelText("3D 仓库备用视图")).toBeTruthy();
+    expect(screen.getByText("重置视角")).toBeTruthy();
+    expect(screen.getByText("模型：程序化仓库资产；可替换为 CC BY / CC0 GLB 模型")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: /2 障碍/ }));
     fireEvent.click(await screen.findByTitle("3D [1, 0]"));
     fireEvent.click(screen.getByRole("button", { name: "2D 平面" }));
@@ -45,6 +47,27 @@ describe("App", () => {
     expect(document.querySelector(".point-select-hint strong")?.textContent).toBe("目标点");
     fireEvent.click(await screen.findByTitle("3D [2, 1]"));
     expect(screen.getByText("T1")).toBeTruthy();
+  });
+
+  it("shows robots and search expansion data in the 3D fallback view", async () => {
+    vi.stubGlobal("fetch", vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => [] })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          success: true, message: "Round trip path found", totalCost: 2, totalExpandedCount: 2,
+          fullPath: [[0, 0], [0, 1], [0, 0]],
+          outbound: { found: true, message: "Path found", path: [[0, 0], [0, 1]], pathCost: 1, expandedCount: 1, expandedOrder: [[0, 0]], searchTrace: [{ point: [0, 0], gCost: 0, hCost: 1, fCost: 1 }] },
+          returnTrip: { found: true, message: "Path found", path: [[0, 1], [0, 0]], pathCost: 1, expandedCount: 1, expandedOrder: [[0, 1]], searchTrace: [{ point: [0, 1], gCost: 0, hCost: 1, fCost: 1 }] },
+        }),
+      }));
+    render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: "运行路径规划" }));
+    await waitFor(() => expect(screen.getByText("路线方向")).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "3D 仓库" }));
+    const expandedCell = await screen.findByTitle("3D [0, 0]");
+    expect(expandedCell.getAttribute("data-expansion")).toBe("true");
+    expect(within(expandedCell).getByText("01")).toBeTruthy();
   });
 
   it("renders directional route markers after planning", async () => {

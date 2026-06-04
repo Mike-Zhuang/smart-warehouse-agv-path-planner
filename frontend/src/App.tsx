@@ -32,6 +32,7 @@ type MultiEditMode = "tasks" | "grid";
 interface RouteMarker { direction: RouteDirection; phase: RoutePhase; label?: string; robotIndex?: number }
 interface CurveRoute { key: string; points: Point[]; phase: RoutePhase; robotIndex?: number }
 interface ExpansionState { outbound: boolean; returning: boolean; currentPhase: "outbound" | "return" | null }
+interface SceneRobot { id: string; point: Point; robotIndex?: number; phase?: RoutePhase; waiting?: boolean }
 type Observation = {
   kind: "single"; algorithm: SingleAlgorithm; trace?: SearchTraceEntry; target?: Point; phase: string; expanded: number; totalExpanded: number;
 } | {
@@ -136,6 +137,15 @@ function metricResult(result: PlannerResult | null) {
   return isRoundTripResult(result)
     ? { success: result.success, cost: result.totalCost, expanded: result.totalExpandedCount, message: result.message }
     : { success: result.found, cost: result.pathCost, expanded: result.expandedCount, message: result.message };
+}
+
+function firstCell(grid: Grid, cellType: CellType): Point | null {
+  for (let row = 0; row < grid.length; row += 1) {
+    for (let col = 0; col < (grid[row]?.length ?? 0); col += 1) {
+      if (grid[row][col] === cellType) return [row, col];
+    }
+  }
+  return null;
 }
 
 function curvePath(points: Point[]): string {
@@ -261,6 +271,39 @@ export function App() {
       point: robot.timeline[Math.min(animationIndex, robot.timeline.length - 1)],
     }));
   }, [animationIndex, result]);
+
+  const sceneRobots = useMemo((): SceneRobot[] => {
+    if (isMultiResult(result)) {
+      return result.robots.map((robot, robotIndex) => {
+        const timeStep = Math.min(animationIndex, robot.timeline.length - 1);
+        const point = robot.timeline[timeStep] ?? robot.timeline[0];
+        const previous = timeStep > 0 ? robot.timeline[timeStep - 1] : null;
+        const returning = robot.returnStartTimeStep !== null && timeStep >= robot.returnStartTimeStep;
+        return {
+          id: robot.id,
+          point,
+          robotIndex,
+          phase: returning ? "return" : "outbound",
+          waiting: Boolean(previous && pointKey(previous) === pointKey(point)),
+        };
+      });
+    }
+    const startPoint = singleAnimation.path[0] ?? firstCell(grid, 3);
+    if (!startPoint) return [];
+    const visiblePathCount = Math.max(0, animationIndex - singleAnimation.expanded.length);
+    const currentPoint = visiblePathCount > 0
+      ? singleAnimation.path[Math.min(visiblePathCount - 1, singleAnimation.path.length - 1)]
+      : startPoint;
+    const selected = result && !isMultiResult(result) ? (isCompareResult(result) ? result.astar : result) : null;
+    const returnBoundary = selected && isRoundTripResult(selected) ? selected.outbound.path.length : Number.POSITIVE_INFINITY;
+    return [{
+      id: "agv-01",
+      point: currentPoint,
+      robotIndex: 0,
+      phase: visiblePathCount > returnBoundary ? "return" : "outbound",
+      waiting: false,
+    }];
+  }, [animationIndex, grid, result, singleAnimation.expanded.length, singleAnimation.path]);
 
   const taskMarkers = useMemo(() => {
     if (mode !== "multi") return [];
@@ -555,7 +598,7 @@ export function App() {
             </div>
           </div> : <Suspense fallback={<div className="scene3d-loading">正在加载 3D 仓库视图...</div>}>
             <Scene3D grid={grid} rows={rows} cols={cols} mode={mode} selectedRobot={selectedRobot}
-              taskMarkers={taskMarkers} robots={currentRobots} routes={curveRoutes} robotColors={ROBOT_COLORS}
+              taskMarkers={taskMarkers} robots={sceneRobots} routes={curveRoutes} expansions={expansionStates} robotColors={ROBOT_COLORS}
               onCellClick={handleCellPaint} />
           </Suspense>}
           <div className="legend">{CELL_META.map(({ value, label }) => <span key={value}><i className={`legend-${value}`} />{value} · {label}</span>)}</div>
