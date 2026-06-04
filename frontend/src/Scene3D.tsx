@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Canvas, useThree } from "@react-three/fiber";
 import * as THREE from "three";
+import { OrbitControls as ThreeOrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import type { CellType, Grid, Mode, Point, RobotTaskMarker } from "./types";
 import { pointKey } from "./grid-utils";
 
@@ -55,10 +56,10 @@ const CAMERA_PRESETS: Record<CameraPreset, [number, number, number]> = {
 
 function hasWebGlSupport() {
   if (typeof window === "undefined") return false;
-  if (!("WebGLRenderingContext" in window)) return false;
+  if (typeof navigator !== "undefined" && /jsdom/i.test(navigator.userAgent)) return false;
   try {
     const canvas = document.createElement("canvas");
-    return Boolean(canvas.getContext("webgl") || canvas.getContext("experimental-webgl"));
+    return Boolean(canvas.getContext("webgl2") || canvas.getContext("webgl") || canvas.getContext("experimental-webgl"));
   } catch {
     return false;
   }
@@ -95,6 +96,10 @@ class SceneCanvasErrorBoundary extends React.Component<{ fallback: React.ReactNo
   }
 }
 
+function SceneRenderErrorFallback(props: Scene3DProps) {
+  return <Scene3DFallback {...props} message="3D 渲染异常，已自动切换到备用点选层。请刷新页面；如果仍然出现，请把控制台错误发给我。" />;
+}
+
 function CameraRig({ preset, rows, cols }: { preset: CameraPreset; rows: number; cols: number }) {
   const { camera } = useThree();
   useEffect(() => {
@@ -104,6 +109,31 @@ function CameraRig({ preset, rows, cols }: { preset: CameraPreset; rows: number;
     camera.lookAt(target);
     camera.updateProjectionMatrix();
   }, [camera, cols, preset, rows]);
+  return null;
+}
+
+function NativeOrbitControls({ rows, cols }: { rows: number; cols: number }) {
+  const { camera, gl } = useThree();
+  useEffect(() => {
+    const controls = new ThreeOrbitControls(camera, gl.domElement);
+    controls.target.set(cols / 2, 0, rows / 2);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.08;
+    controls.minDistance = 7;
+    controls.maxDistance = 55;
+    controls.maxPolarAngle = Math.PI / 2.05;
+    controls.update();
+    let frameId = 0;
+    const tick = () => {
+      controls.update();
+      frameId = window.requestAnimationFrame(tick);
+    };
+    tick();
+    return () => {
+      window.cancelAnimationFrame(frameId);
+      controls.dispose();
+    };
+  }, [camera, cols, gl, rows]);
   return null;
 }
 
@@ -327,6 +357,7 @@ function SceneCanvas(props: Scene3DProps & { preset: CameraPreset }) {
   return <Canvas className="scene3d-canvas" camera={{ position: [cameraTarget[0] + cameraPosition[0], cameraPosition[1], cameraTarget[2] + cameraPosition[2]], fov: 42 }} shadows>
     <color attach="background" args={["#f7f7f7"]} />
     <CameraRig preset={props.preset} rows={props.rows} cols={props.cols} />
+    <NativeOrbitControls rows={props.rows} cols={props.cols} />
     <ambientLight intensity={0.82} />
     <directionalLight position={[props.cols / 2 + 5, 14, props.rows / 2 + 8]} intensity={1.18} castShadow />
     <group position={[-props.cols / 2, 0, -props.rows / 2]}>
@@ -346,9 +377,9 @@ function SceneCanvas(props: Scene3DProps & { preset: CameraPreset }) {
   </Canvas>;
 }
 
-function Scene3DFallback(props: Scene3DProps) {
+function Scene3DFallback({ message, ...props }: Scene3DProps & { message: string }) {
   return <div className="scene3d-fallback" role="region" aria-label="3D 仓库备用视图">
-    <p>当前环境不支持 WebGL，这里使用备用 3D 点选层。浏览器中会显示完整 Three.js 仓库场景。</p>
+    <p>{message}</p>
     <div className="scene3d-fallback-grid" style={{ gridTemplateColumns: `repeat(${props.cols}, minmax(20px, 1fr))` }}>
       {props.grid.flatMap((row, rowIndex) => row.map((cell, colIndex) => {
         const point: Point = [rowIndex, colIndex];
@@ -378,8 +409,8 @@ export function Scene3D(props: Scene3DProps) {
       <button className={preset === "side" ? "active" : ""} onClick={() => setPreset("side")}>斜视</button>
     </div>
     {hasWebGlSupport()
-      ? <SceneCanvasErrorBoundary fallback={<Scene3DFallback {...props} />}><SceneCanvas key={preset} {...props} preset={preset} /></SceneCanvasErrorBoundary>
-      : <Scene3DFallback {...props} />}
+      ? <SceneCanvasErrorBoundary fallback={<SceneRenderErrorFallback {...props} />}><SceneCanvas key={preset} {...props} preset={preset} /></SceneCanvasErrorBoundary>
+      : <Scene3DFallback {...props} message="浏览器没有创建 WebGL 上下文，已切换到备用 3D 点选层。请检查浏览器硬件加速或 WebGL 设置。" />}
     <div className="scene3d-credit">模型：程序化仓库资产；可替换为 CC BY / CC0 GLB 模型</div>
   </section>;
 }
