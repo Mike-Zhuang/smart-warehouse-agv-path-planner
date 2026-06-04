@@ -60,13 +60,14 @@ git remote set-url origin "$REPO_URL"
 LOCAL_HASH=$(git rev-parse HEAD 2>/dev/null || true)
 git fetch --depth 1 origin main
 FETCH_HASH=$(git rev-parse origin/main)
+echo "[agv-sync] local=${LOCAL_HASH:-none} fetched=$FETCH_HASH"
 
 if [[ "$LOCAL_HASH" == "$FETCH_HASH" ]] \
   && [[ -x "$APP_DIR/cpp_core/build/agv-path-planner" ]] \
   && [[ -x "$APP_DIR/.venv/bin/uvicorn" ]] \
   && [[ -f "$WEB_DIR/index.html" ]] \
   && systemctl is-active --quiet "$SERVICE_NAME"; then
-  echo "[agv-sync] no update"
+  echo "[agv-sync] no update: repository, C++ binary, Python env, web files and service are already ready"
   exit 0
 fi
 
