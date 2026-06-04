@@ -1,6 +1,5 @@
-import { useMemo, useRef, useState } from "react";
-import { Canvas } from "@react-three/fiber";
-import { Html, OrbitControls } from "@react-three/drei";
+import React, { useEffect, useMemo, useState } from "react";
+import { Canvas, useThree } from "@react-three/fiber";
 import * as THREE from "three";
 import type { CellType, Grid, Mode, Point, RobotTaskMarker } from "./types";
 import { pointKey } from "./grid-utils";
@@ -77,6 +76,37 @@ function cellLabel(cell: CellType) {
   return ["通道", "货架", "障碍", "装卸区", "目标货架"][cell];
 }
 
+class SceneCanvasErrorBoundary extends React.Component<{ fallback: React.ReactNode; children: React.ReactNode }, { failed: boolean }> {
+  constructor(props: { fallback: React.ReactNode; children: React.ReactNode }) {
+    super(props);
+    this.state = { failed: false };
+  }
+
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+
+  componentDidCatch(error: unknown) {
+    console.error("3D 仓库视图渲染失败，已切换到备用视图", error);
+  }
+
+  render() {
+    return this.state.failed ? this.props.fallback : this.props.children;
+  }
+}
+
+function CameraRig({ preset, rows, cols }: { preset: CameraPreset; rows: number; cols: number }) {
+  const { camera } = useThree();
+  useEffect(() => {
+    const target = new THREE.Vector3(cols / 2, 0, rows / 2);
+    const offset = CAMERA_PRESETS[preset];
+    camera.position.set(target.x + offset[0], offset[1], target.z + offset[2]);
+    camera.lookAt(target);
+    camera.updateProjectionMatrix();
+  }, [camera, cols, preset, rows]);
+  return null;
+}
+
 function WarehouseFloor({ rows, cols }: { rows: number; cols: number }) {
   const rowLines = useMemo(() => Array.from({ length: rows + 1 }, (_, row) => {
     const geometry = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0.025, row), new THREE.Vector3(cols, 0.025, row)]);
@@ -123,9 +153,21 @@ function Tile({ cell, point, markers, selected, expansion, onCellClick }: {
     {cell === 3 && <LoadingPad />}
     {cell === 4 && <TargetPad />}
     {selected && <SelectionRing />}
-    {markers.map((marker, index) => <Html key={`${marker.robotId}-${marker.role}`} position={[-0.32 + index * 0.3, 1.15, -0.32]} center>
-      <span className={`scene3d-label ${marker.selected ? "selected" : ""}`}>{marker.label}</span>
-    </Html>)}
+    {markers.map((marker, index) => <TaskMarkerModel key={`${marker.robotId}-${marker.role}`} selected={marker.selected} index={index} role={marker.role} />)}
+  </group>;
+}
+
+function TaskMarkerModel({ selected, index, role }: { selected: boolean; index: number; role: "start" | "target" }) {
+  const color = selected ? ACCENT_COLOR : "#ffffff";
+  return <group position={[-0.28 + index * 0.28, 0.82, -0.28]}>
+    <mesh>
+      <cylinderGeometry args={[0.12, 0.12, 0.05, 18]} />
+      <meshStandardMaterial color={color} roughness={0.6} />
+    </mesh>
+    <mesh position={[0, 0.08, 0]}>
+      {role === "target" ? <torusGeometry args={[0.1, 0.025, 8, 24]} /> : <coneGeometry args={[0.1, 0.2, 18]} />}
+      <meshStandardMaterial color="#111111" roughness={0.5} />
+    </mesh>
   </group>;
 }
 
@@ -207,7 +249,10 @@ function TargetPad() {
       <torusGeometry args={[0.28, 0.03, 8, 32]} />
       <meshBasicMaterial color="#111111" />
     </mesh>
-    <Html position={[0, 0.42, 0]} center><span className="scene3d-label selected">T</span></Html>
+    <mesh position={[0, 0.38, 0]}>
+      <coneGeometry args={[0.12, 0.24, 24]} />
+      <meshStandardMaterial color="#111111" roughness={0.55} />
+    </mesh>
   </group>;
 }
 
@@ -246,8 +291,14 @@ function RobotModel({ robot, robotColors }: { robot: RobotPosition3D; robotColor
       <cylinderGeometry args={[0.08, 0.08, 0.08, 18]} />
       <meshStandardMaterial color="#050505" />
     </mesh>
-    {robot.waiting && <Html position={[0, 0.75, 0]} center><span className="scene3d-wait">Ⅱ</span></Html>}
-    <Html position={[0, 0.58, 0]} center><span className="scene3d-robot-label">{compactRobotId(robot.id)}</span></Html>
+    {robot.waiting && <mesh position={[0, 0.74, 0]}>
+      <boxGeometry args={[0.08, 0.22, 0.04]} />
+      <meshBasicMaterial color="#111111" />
+    </mesh>}
+    <mesh position={[0, 0.58, 0]}>
+      <sphereGeometry args={[0.12, 18, 18]} />
+      <meshBasicMaterial color={color} />
+    </mesh>
   </group>;
 }
 
@@ -275,6 +326,7 @@ function SceneCanvas(props: Scene3DProps & { preset: CameraPreset }) {
 
   return <Canvas className="scene3d-canvas" camera={{ position: [cameraTarget[0] + cameraPosition[0], cameraPosition[1], cameraTarget[2] + cameraPosition[2]], fov: 42 }} shadows>
     <color attach="background" args={["#f7f7f7"]} />
+    <CameraRig preset={props.preset} rows={props.rows} cols={props.cols} />
     <ambientLight intensity={0.82} />
     <directionalLight position={[props.cols / 2 + 5, 14, props.rows / 2 + 8]} intensity={1.18} castShadow />
     <group position={[-props.cols / 2, 0, -props.rows / 2]}>
@@ -291,7 +343,6 @@ function SceneCanvas(props: Scene3DProps & { preset: CameraPreset }) {
       }))}
       {props.robots.map((robot) => <RobotModel key={robot.id} robot={robot} robotColors={props.robotColors} />)}
     </group>
-    <OrbitControls makeDefault target={cameraTarget} minDistance={7} maxDistance={55} maxPolarAngle={Math.PI / 2.05} />
   </Canvas>;
 }
 
@@ -316,8 +367,7 @@ function Scene3DFallback(props: Scene3DProps) {
 
 export function Scene3D(props: Scene3DProps) {
   const [preset, setPreset] = useState<CameraPreset>("iso");
-  const shellRef = useRef<HTMLElement | null>(null);
-  return <section ref={shellRef} className="scene3d-shell" aria-label="Three.js 3D 仓库视图">
+  return <section className="scene3d-shell" aria-label="Three.js 3D 仓库视图">
     <div className="scene3d-head">
       <b>3D WAREHOUSE</b>
       <span>{props.mode === "multi" ? `当前 AGV：${props.selectedRobot}` : "单车仓库视图"} · 点击地砖可编辑</span>
@@ -327,7 +377,9 @@ export function Scene3D(props: Scene3DProps) {
       <button className={preset === "top" ? "active" : ""} onClick={() => setPreset("top")}>俯视</button>
       <button className={preset === "side" ? "active" : ""} onClick={() => setPreset("side")}>斜视</button>
     </div>
-    {hasWebGlSupport() ? <SceneCanvas {...props} preset={preset} /> : <Scene3DFallback {...props} />}
+    {hasWebGlSupport()
+      ? <SceneCanvasErrorBoundary fallback={<Scene3DFallback {...props} />}><SceneCanvas key={preset} {...props} preset={preset} /></SceneCanvasErrorBoundary>
+      : <Scene3DFallback {...props} />}
     <div className="scene3d-credit">模型：程序化仓库资产；可替换为 CC BY / CC0 GLB 模型</div>
   </section>;
 }
