@@ -271,6 +271,10 @@ export function App() {
     });
   }, [mode, robots, selectedRobot]);
 
+  const protectedRobotPoints = useMemo(() => (
+    mode === "multi" ? robots.flatMap((robot) => [robot.start, robot.target]) : []
+  ), [mode, robots]);
+
   const heatmapTarget = useMemo((): Point | null => {
     if (mode === "multi") {
       const selectedTask = robots.find((robot) => robot.id === selectedRobot);
@@ -339,7 +343,12 @@ export function App() {
       clearResult();
       return;
     }
-    applyGrid(paintCell(grid, point, brush));
+    if (mode === "multi" && (brush === 1 || brush === 2) && protectedRobotPoints.some((protectedPoint) => pointKey(protectedPoint) === pointKey(point))) {
+      clearResult();
+      setError("不能在已有 AGV 起点或目标点上绘制货架或障碍物");
+      return;
+    }
+    applyGrid(paintCell(grid, point, brush, mode === "single"));
   }
 
   function requestPayload(): PlannerRequest {
@@ -476,7 +485,7 @@ export function App() {
           ) : <RobotEditor robots={robots} selectedRobot={selectedRobot} field={robotPointField} onSelect={(id) => { setSelectedRobot(id); setRobotPointField("start"); clearResult(); }} onField={setRobotPointField} onChange={(items) => { setRobots(items); clearResult(); }} onAdd={addRobot} onLoadSample={loadCbsSample} />}
           {mode === "multi" && <div className="segmented multi-edit-switch">
             <button className={multiEditMode === "tasks" ? "active" : ""} onClick={() => setMultiEditMode("tasks")}>设置 AGV 任务点</button>
-            <button className={multiEditMode === "grid" ? "active" : ""} onClick={() => setMultiEditMode("grid")}>编辑仓库底图</button>
+            <button className={multiEditMode === "grid" ? "active" : ""} onClick={() => { setMultiEditMode("grid"); if (brush === 3 || brush === 4) setBrush(2); }}>编辑仓库底图</button>
           </div>}
           <Check label="允许斜向移动" checked={allowDiagonal} onChange={setAllowDiagonal} />
           <Check label="禁止穿越墙角" checked={preventCornerCutting} onChange={setPreventCornerCutting} />
@@ -491,13 +500,13 @@ export function App() {
           </div>
           <div className="brush-grid">
             {CELL_META.map(({ value, label, icon: Icon }) => (
-              <button key={value} className={brush === value ? "brush active" : "brush"} onClick={() => setBrush(value)} disabled={mode === "multi" && multiEditMode === "tasks"}>
+              <button key={value} className={brush === value ? "brush active" : "brush"} onClick={() => setBrush(value)} disabled={mode === "multi" && (multiEditMode === "tasks" || value === 3 || value === 4)}>
                 <Icon size={15} /><b>{value}</b><span>{label}</span>
               </button>
             ))}
           </div>
           <div className="button-grid">
-            <button onClick={() => applyGrid(randomizeObstacles(grid))}><Sparkles size={16} />随机障碍</button>
+            <button onClick={() => applyGrid(randomizeObstacles(grid, Math.random, protectedRobotPoints))}><Sparkles size={16} />随机障碍</button>
             <button onClick={() => applyGrid(createGrid(rows, cols))}><Eraser size={16} />清空地图</button>
             <button onClick={clearResult}><RotateCcw size={16} />清除结果</button>
             <button onClick={downloadJson}><Download size={16} />导出 JSON</button>

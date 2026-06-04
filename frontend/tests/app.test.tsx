@@ -76,6 +76,29 @@ describe("App", () => {
     expect(screen.getByTitle("[1, 0] 障碍")).toBeTruthy();
   });
 
+  it("keeps CBS robot endpoints safe from manual and random obstacles", () => {
+    render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: "CBS 多车" }));
+    fireEvent.click(screen.getByRole("button", { name: "编辑仓库底图" }));
+    fireEvent.click(screen.getByRole("button", { name: /2 障碍/ }));
+    fireEvent.mouseDown(screen.getByTitle("[0, 0] 通道"));
+    expect(screen.getByText("不能在已有 AGV 起点或目标点上绘制货架或障碍物")).toBeTruthy();
+    expect(screen.getByTitle("[0, 0] 通道")).toBeTruthy();
+    fireEvent.click(screen.getByText("随机障碍"));
+    expect(screen.getByTitle("[0, 0] 通道")).toBeTruthy();
+    expect(screen.getByTitle("[0, 1] 通道")).toBeTruthy();
+  });
+
+  it("renders backend object errors as readable messages", async () => {
+    vi.stubGlobal("fetch", vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => [] })
+      .mockResolvedValueOnce({ ok: false, json: async () => ({ detail: [{ loc: ["body", "grid"], msg: "地图不能为空" }] }) }));
+    render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: "运行路径规划" }));
+    await waitFor(() => expect(screen.getByText("body.grid: 地图不能为空")).toBeTruthy());
+    expect(screen.queryByText("[object Object]")).toBeNull();
+  });
+
   it("rejects CBS task points on shelves", () => {
     render(<App />);
     fireEvent.click(screen.getByRole("button", { name: /1 货架/ }));

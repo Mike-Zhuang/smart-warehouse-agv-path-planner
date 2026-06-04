@@ -36,9 +36,10 @@ export function resizeGrid(grid: Grid, rows: number, cols: number): Grid {
   return next;
 }
 
-export function randomizeObstacles(grid: Grid, random = Math.random): Grid {
-  return grid.map((row) =>
-    row.map((cell) => (cell === 0 && random() < 0.16 ? 2 : cell) as CellType),
+export function randomizeObstacles(grid: Grid, random = Math.random, protectedPoints: Point[] = []): Grid {
+  const protectedKeys = new Set(protectedPoints.map(pointKey));
+  return grid.map((row, rowIndex) =>
+    row.map((cell, colIndex) => (cell === 0 && !protectedKeys.has(pointKey([rowIndex, colIndex])) && random() < 0.16 ? 2 : cell) as CellType),
   );
 }
 

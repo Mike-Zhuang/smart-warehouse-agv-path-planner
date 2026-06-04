@@ -21,6 +21,11 @@ describe("grid utils", () => {
     expect(randomizeObstacles(grid.map((row) => [...row]), () => 0)).toEqual([[3, 2], [1, 4]]);
   });
 
+  it("keeps protected robot points clear while randomizing obstacles", () => {
+    const grid = createGrid(2, 2);
+    expect(randomizeObstacles(grid, () => 0, [[0, 0], [1, 1]])).toEqual([[0, 2], [2, 0]]);
+  });
+
   it("exports and imports request json", () => {
     const request = { mode: "single", algorithm: "astar", roundTrip: true, allowDiagonal: true, preventCornerCutting: true, grid: [[3, 4]] } as import("../src/types").PlannerRequest;
     expect(importRequest(exportRequest(request))).toEqual(request);
