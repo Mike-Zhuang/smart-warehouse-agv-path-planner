@@ -6,6 +6,7 @@ WEB_DIR=/www/wwwroot/agv.mikezhuang.cn
 SERVICE_NAME=agv-path-planner.service
 REPO_MAIN_REF=refs/heads/main
 LOCK_FILE=/tmp/agv-path-planner-sync-deploy.lock
+DEPLOY_MARKER="$WEB_DIR/.deploy-revision"
 CANDIDATES=(
   https://gh-proxy.com/https://github.com/Mike-Zhuang/smart-warehouse-agv-path-planner.git
   https://gitproxy.click/https://github.com/Mike-Zhuang/smart-warehouse-agv-path-planner.git
@@ -66,6 +67,8 @@ if [[ "$LOCAL_HASH" == "$FETCH_HASH" ]] \
   && [[ -x "$APP_DIR/cpp_core/build/agv-path-planner" ]] \
   && [[ -x "$APP_DIR/.venv/bin/uvicorn" ]] \
   && [[ -f "$WEB_DIR/index.html" ]] \
+  && [[ -f "$DEPLOY_MARKER" ]] \
+  && [[ "$(cat "$DEPLOY_MARKER" 2>/dev/null)" == "$FETCH_HASH" ]] \
   && systemctl is-active --quiet "$SERVICE_NAME"; then
   echo "[agv-sync] no update: repository, C++ binary, Python env, web files and service are already ready"
   exit 0
@@ -92,6 +95,7 @@ npm --prefix "$APP_DIR/frontend" run build
 
 install -d "$WEB_DIR"
 rsync -a --delete --exclude=.user.ini --exclude=.htaccess "$APP_DIR/frontend/dist/" "$WEB_DIR/"
+printf '%s\n' "$FETCH_HASH" > "$DEPLOY_MARKER"
 install_service
 systemctl restart "$SERVICE_NAME"
 wait_for_api
