@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowRight, Box, Bot, Boxes, Download, Eraser, FastForward, Flag, Github,
   Grid3X3, Hash, Pause, Play, Plus, RefreshCw, RotateCcw, Route, Save, Settings2,
@@ -12,8 +12,10 @@ import {
 import type {
   CellType, CompareResult, DisplayMode, Grid, Mode, MultiRobotResult, PathResult,
   PathStyle, PlannerRequest, Point, RobotPointField, RobotTask, RobotTaskMarker, RoundTripResult,
-  RouteDirection, SampleMap, SearchTraceEntry, SingleAlgorithm,
+  RouteDirection, SampleMap, SearchTraceEntry, SingleAlgorithm, ViewMode,
 } from "./types";
+
+const Scene3D = lazy(() => import("./Scene3D").then((module) => ({ default: module.Scene3D })));
 
 const CELL_META = [
   { value: 0 as CellType, label: "通道", icon: Square },
@@ -158,6 +160,7 @@ export function App() {
   const [cols, setCols] = useState(DEFAULT_COLS);
   const [brush, setBrush] = useState<CellType>(1);
   const [displayMode, setDisplayMode] = useState<DisplayMode>("number");
+  const [viewMode, setViewMode] = useState<ViewMode>("2d");
   const [pathStyle, setPathStyle] = useState<PathStyle>("arrows");
   const [showHeatmap, setShowHeatmap] = useState(false);
   const [hoveredPoint, setHoveredPoint] = useState<Point | null>(null);
@@ -525,6 +528,9 @@ export function App() {
           <div className="map-toolbar">
             <div><b>WAREHOUSE GRID</b><span>{rows} 行 × {cols} 列</span></div>
             <div className="map-toolbar-actions"><div className="segmented compact">
+              <button className={viewMode === "2d" ? "active" : ""} onClick={() => setViewMode("2d")}>2D 平面</button>
+              <button className={viewMode === "3d" ? "active" : ""} onClick={() => setViewMode("3d")}>3D 仓库</button>
+            </div><div className="segmented compact">
               <button className={displayMode === "number" ? "active" : ""} onClick={() => setDisplayMode("number")}><Hash size={15} />数字</button>
               <button className={displayMode === "icon" ? "active" : ""} onClick={() => setDisplayMode("icon")}><Box size={15} />图标</button>
             </div><div className="segmented compact path-style-switch">
@@ -533,7 +539,7 @@ export function App() {
               <button className={pathStyle === "both" ? "active" : ""} onClick={() => setPathStyle("both")}>组合</button>
             </div></div>
           </div>
-          <div className="grid-scroll">
+          {viewMode === "2d" ? <div className="grid-scroll">
             <div className="warehouse-grid" style={{ gridTemplateColumns: `repeat(${cols}, minmax(22px, 1fr))` }} onMouseLeave={() => { setDragging(false); setHoveredPoint(null); }} onMouseUp={() => setDragging(false)}>
               {(pathStyle === "curves" || pathStyle === "both") && <CurveOverlay routes={curveRoutes} rows={rows} cols={cols} />}
               {grid.flatMap((row, rowIndex) => row.map((cell, colIndex) => (
@@ -547,7 +553,11 @@ export function App() {
                   onEnter={() => { setHoveredPoint([rowIndex, colIndex]); if (dragging) handleCellPaint([rowIndex, colIndex]); }} />
               )))}
             </div>
-          </div>
+          </div> : <Suspense fallback={<div className="scene3d-loading">正在加载 3D 仓库视图...</div>}>
+            <Scene3D grid={grid} rows={rows} cols={cols} mode={mode} selectedRobot={selectedRobot}
+              taskMarkers={taskMarkers} robots={currentRobots} routes={curveRoutes} robotColors={ROBOT_COLORS}
+              onCellClick={handleCellPaint} />
+          </Suspense>}
           <div className="legend">{CELL_META.map(({ value, label }) => <span key={value}><i className={`legend-${value}`} />{value} · {label}</span>)}</div>
           {result && !isMultiResult(result) && <div className="route-legend"><b>路线方向</b><span><i className="route-outbound">→</i>去程</span><span><i className="route-return">←</i>返程</span><span><i className="search-legend-outbound" />去程搜索</span><span><i className="search-legend-return" />返程搜索</span><small>SVG 箭头支持八方向移动；重叠路线会错位显示，返程搜索使用虚线斜纹。</small></div>}
           {isMultiResult(result) && <div className="route-legend"><b>多车轨迹</b><span><i className="route-wait">Ⅱ</i>等待</span>{result.robots.map((robot, index) => <span key={robot.id}><i style={{ background: ROBOT_COLORS[index % ROBOT_COLORS.length][0] }} /><i style={{ background: ROBOT_COLORS[index % ROBOT_COLORS.length][1] }} />{robot.id} 去 / 返</span>)}<small>浅色为去程，深色为返程；箭头数字为 AGV 编号。</small></div>}

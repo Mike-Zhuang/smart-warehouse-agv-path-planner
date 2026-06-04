@@ -25,6 +25,28 @@ describe("App", () => {
     expect(screen.getByRole("button", { name: "数字" })).toBeTruthy();
   });
 
+  it("switches to the 3D warehouse view and edits through the fallback picking layer", async () => {
+    render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: "3D 仓库" }));
+    expect(await screen.findByLabelText("Three.js 3D 仓库视图")).toBeTruthy();
+    expect(await screen.findByLabelText("3D 仓库备用视图")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /2 障碍/ }));
+    fireEvent.click(await screen.findByTitle("3D [1, 0]"));
+    fireEvent.click(screen.getByRole("button", { name: "2D 平面" }));
+    expect(screen.getByTitle("[1, 0] 障碍")).toBeTruthy();
+  });
+
+  it("sets CBS task points from the 3D fallback picking layer", async () => {
+    render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: "CBS 多车" }));
+    fireEvent.click(screen.getByRole("button", { name: "3D 仓库" }));
+    fireEvent.click(await screen.findByTitle("3D [2, 0]"));
+    expect(screen.getByText("S1")).toBeTruthy();
+    expect(document.querySelector(".point-select-hint strong")?.textContent).toBe("目标点");
+    fireEvent.click(await screen.findByTitle("3D [2, 1]"));
+    expect(screen.getByText("T1")).toBeTruthy();
+  });
+
   it("renders directional route markers after planning", async () => {
     vi.stubGlobal("fetch", vi.fn()
       .mockResolvedValueOnce({ ok: true, json: async () => [] })
