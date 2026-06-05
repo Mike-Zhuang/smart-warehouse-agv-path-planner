@@ -632,6 +632,12 @@ export function App() {
           <TeachingPanel observation={observation} hoveredPoint={hoveredPoint} heatmapTarget={heatmapTarget} />
         </aside>
       </main>
+      <footer className="site-record">
+        <a href="https://beian.miit.gov.cn/" target="_blank" rel="noreferrer">
+          <img src="/beian-icon.svg" alt="" aria-hidden="true" />
+          沪ICP备2026015123号
+        </a>
+      </footer>
     </div>
   );
 }

@@ -19,6 +19,7 @@ describe("App", () => {
     render(<App />);
     expect(screen.getByText("WAREHOUSE GRID")).toBeTruthy();
     expect(screen.getByRole("link", { name: "GitHub" }).getAttribute("href")).toBe("https://github.com/Mike-Zhuang/smart-warehouse-agv-path-planner");
+    expect(screen.getByRole("link", { name: "沪ICP备2026015123号" }).getAttribute("href")).toBe("https://beian.miit.gov.cn/");
     expect(screen.queryByText("SMART WAREHOUSE AGV PATH PLANNER · C++ CORE / FASTAPI / REACT")).toBeNull();
     expect(screen.getByRole("button", { name: "图标" })).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "图标" }));
