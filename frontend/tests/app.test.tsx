@@ -17,9 +17,13 @@ describe("App", () => {
 
   it("renders the warehouse editor and switches display mode", () => {
     render(<App />);
-    expect(screen.getByText("WAREHOUSE GRID")).toBeTruthy();
+    expect(screen.getByText("仓库网格地图")).toBeTruthy();
     expect(screen.getByRole("link", { name: "GitHub" }).getAttribute("href")).toBe("https://github.com/Mike-Zhuang/smart-warehouse-agv-path-planner");
-    expect(screen.getByRole("link", { name: "沪ICP备2026015123号" }).getAttribute("href")).toBe("https://beian.miit.gov.cn/");
+    const filingLink = screen.getByRole("link", { name: "沪ICP备2026015123号" });
+    expect(filingLink.getAttribute("href")).toBe("https://beian.miit.gov.cn/");
+    expect(filingLink.querySelector("img")?.getAttribute("src")).toBe("/beian-icon.png");
+    expect(screen.queryByText("C++ CORE ONLINE")).toBeNull();
+    expect(screen.queryByText("DATA STRUCTURES × PATH PLANNING")).toBeNull();
     expect(screen.queryByText("SMART WAREHOUSE AGV PATH PLANNER · C++ CORE / FASTAPI / REACT")).toBeNull();
     expect(screen.getByRole("button", { name: "图标" })).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "图标" }));
@@ -32,7 +36,7 @@ describe("App", () => {
     expect(await screen.findByLabelText("Three.js 3D 仓库视图")).toBeTruthy();
     expect(await screen.findByLabelText("3D 仓库备用视图")).toBeTruthy();
     expect(screen.getByText("重置视角")).toBeTruthy();
-    expect(screen.getByText("模型：程序化仓库资产；可替换为 CC BY / CC0 GLB 模型")).toBeTruthy();
+    expect(screen.queryByText("模型：程序化仓库资产；可替换为 CC BY / CC0 GLB 模型")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: /2 障碍/ }));
     fireEvent.click(await screen.findByTitle("3D [1, 0]"));
     fireEvent.click(screen.getByRole("button", { name: "2D 平面" }));
@@ -65,6 +69,8 @@ describe("App", () => {
     render(<App />);
     fireEvent.click(screen.getByRole("button", { name: "运行路径规划" }));
     await waitFor(() => expect(screen.getByText("路线方向")).toBeTruthy());
+    expect(screen.getByText("路径长度")).toBeTruthy();
+    expect(screen.getByText("搜索节点数")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "3D 仓库" }));
     const expandedCell = await screen.findByTitle("3D [0, 0]");
     expect(expandedCell.getAttribute("data-expansion")).toBe("true");

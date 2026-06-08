@@ -499,12 +499,10 @@ export function App() {
         <div className="brand"><span className="corner-square" /><Bot size={24} /><b>AGV ROUTE LAB</b></div>
         <div className="topbar-copy">智能仓储机器人路径规划系统</div>
         <a className="github-link" href="https://github.com/Mike-Zhuang/smart-warehouse-agv-path-planner" target="_blank" rel="noreferrer"><Github size={16} />GitHub</a>
-        <div className="status-dot"><span /> C++ CORE ONLINE</div>
       </header>
 
       <section className="hero">
         <div>
-          <p className="eyebrow">DATA STRUCTURES × PATH PLANNING</p>
           <h1>仓储 AGV 路径规划<br /><span>可视化控制台</span></h1>
           <p>编辑网格地图，观察 A* 搜索展开过程，并使用 CBS 解决多机器人冲突。</p>
         </div>
@@ -569,7 +567,7 @@ export function App() {
 
         <section className="map-section">
           <div className="map-toolbar">
-            <div><b>WAREHOUSE GRID</b><span>{rows} 行 × {cols} 列</span></div>
+            <div><b>仓库网格地图</b><span>{rows} 行 × {cols} 列</span></div>
             <div className="map-toolbar-actions"><div className="segmented compact">
               <button className={viewMode === "2d" ? "active" : ""} onClick={() => setViewMode("2d")}>2D 平面</button>
               <button className={viewMode === "3d" ? "active" : ""} onClick={() => setViewMode("3d")}>3D 仓库</button>
@@ -634,7 +632,7 @@ export function App() {
       </main>
       <footer className="site-record">
         <a href="https://beian.miit.gov.cn/" target="_blank" rel="noreferrer">
-          <img src="/beian-icon.svg" alt="" aria-hidden="true" />
+          <img src="/beian-icon.png" alt="" aria-hidden="true" />
           沪ICP备2026015123号
         </a>
       </footer>
@@ -729,7 +727,7 @@ function TeachingPanel({ observation, hoveredPoint, heatmapTarget }: { observati
 
 function MetricCards({ success, cost, expanded, message }: { success: boolean; cost: number; expanded: number; message: string }) {
   return <><div className={`result-banner ${success ? "success" : "failure"}`}>{success ? "PATH FOUND" : "NO PATH"}<small>{message}</small></div>
-    <div className="metric-grid"><Metric label="总代价" value={cost} /><Metric label="扩展节点" value={expanded} /></div></>;
+    <div className="metric-grid"><Metric label="路径长度" value={cost} /><Metric label="搜索节点数" value={expanded} /></div></>;
 }
 
 function Metric({ label, value }: { label: string; value: React.ReactNode }) {
@@ -741,12 +739,12 @@ function CompareCards({ result }: { result: CompareResult }) {
     ? { cost: item.totalCost, expanded: item.totalExpandedCount }
     : { cost: item.pathCost, expanded: item.expandedCount };
   return <div className="compare-grid">
-    {(["astar", "dijkstra"] as const).map((key) => { const item = summarize(result[key]); return <div className="compare-card" key={key}><b>{key.toUpperCase()}</b><span>代价 {item.cost}</span><span>扩展 {item.expanded}</span></div>; })}
+    {(["astar", "dijkstra"] as const).map((key) => { const item = summarize(result[key]); return <div className="compare-card" key={key}><b>{key.toUpperCase()}</b><span>路径长度 {item.cost}</span><span>搜索节点 {item.expanded}</span></div>; })}
   </div>;
 }
 
 function MultiCards({ result }: { result: MultiRobotResult }) {
-  return <><div className="metric-grid"><Metric label="总代价" value={result.totalCost} /><Metric label="已解决冲突" value={result.resolvedConflictCount} /></div>
+  return <><div className="metric-grid"><Metric label="路径长度" value={result.totalCost} /><Metric label="已解决冲突" value={result.resolvedConflictCount} /></div>
     <div className="robot-result-list">{result.robots.map((robot) => <div key={robot.id}><b>{robot.id}</b><span>{robot.pathCost} cost · {robot.timeline.length} frames</span></div>)}</div></>;
 }
 

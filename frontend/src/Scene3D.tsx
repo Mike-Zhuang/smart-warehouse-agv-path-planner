@@ -537,6 +537,5 @@ export function Scene3D(props: Scene3DProps) {
     {fallbackMessage
       ? <Scene3DFallback {...props} message={fallbackMessage} />
       : <div ref={containerRef} className="scene3d-canvas" role="presentation" />}
-    <div className="scene3d-credit">模型：程序化仓库资产；可替换为 CC BY / CC0 GLB 模型</div>
   </section>;
 }
