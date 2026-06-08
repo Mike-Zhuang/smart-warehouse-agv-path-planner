@@ -42,6 +42,13 @@ cmake -S cpp_core -B cpp_core/build
 cmake --build cpp_core/build
 ```
 
+如果 Windows 使用 vcpkg 安装 `nlohmann_json`，构建命令改为：
+
+```bash
+cmake -S cpp_core -B cpp_core/build -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake
+cmake --build cpp_core/build --config Release
+```
+
 ## 启动图形界面
 
 打开第一个终端，启动后端：
