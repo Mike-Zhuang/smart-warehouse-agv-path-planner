@@ -138,3 +138,15 @@ Windows 复现时遇到四类问题：
 此外，Visual Studio 生成器会把可执行文件放在 `cpp_core/build/Release/agv-path-planner.exe`，
 而 Unix 风格构建通常位于 `cpp_core/build/agv-path-planner`。后端 `PlannerClient`
 增加跨平台候选路径查找，避免 Windows 构建成功后仍显示“C++ 核心尚未构建”。
+
+## 2026-06-08：记录线上部署方案
+
+项目部署到 `agv.mikezhuang.cn`。线上采用 Nginx 托管 Vite 构建后的前端静态文件，
+`/api` 反向代理到仅监听本机的 FastAPI 服务 `127.0.0.1:18080`，避免直接暴露后端端口。
+部署脚本位于 `deploy/sync-deploy.sh`，用于配合宝塔计划任务自动拉取 GitHub 代码、
+构建 C++ 核心、运行核心测试、构建前端、同步静态文件并重启 systemd 服务。
+
+部署过程中补充了几项保护：使用多个 GitHub 代理源，提高服务器拉取代码的成功率；
+使用锁文件避免计划任务并发执行；使用 `.deploy-revision` 标记已部署版本；同时检查
+C++ 可执行文件、Python 虚拟环境、前端静态文件和 systemd 服务状态，避免“Git 版本
+没变但运行环境缺文件”时误判为无需部署。
