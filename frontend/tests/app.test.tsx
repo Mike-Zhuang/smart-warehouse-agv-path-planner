@@ -21,7 +21,7 @@ describe("App", () => {
     expect(screen.getByRole("link", { name: "GitHub" }).getAttribute("href")).toBe("https://github.com/Mike-Zhuang/smart-warehouse-agv-path-planner");
     const filingLink = screen.getByRole("link", { name: "沪ICP备2026015123号" });
     expect(filingLink.getAttribute("href")).toBe("https://beian.miit.gov.cn/");
-    expect(filingLink.querySelector("img")?.getAttribute("src")).toBe("/beian-icon.png");
+    expect(filingLink.querySelector("img")).toBeNull();
     expect(screen.queryByText("C++ CORE ONLINE")).toBeNull();
     expect(screen.queryByText("DATA STRUCTURES × PATH PLANNING")).toBeNull();
     expect(screen.queryByText("SMART WAREHOUSE AGV PATH PLANNER · C++ CORE / FASTAPI / REACT")).toBeNull();
