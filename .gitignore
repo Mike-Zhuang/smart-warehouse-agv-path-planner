@@ -1,9 +1,64 @@
+# macOS / editor
+.DS_Store
+**/.DS_Store
+.vscode/
+.idea/
+
+# local environment
+.env
+.env.*
+!.env.example
+.venv/
+venv/
+submission/.venv/
+
+# Python
+__pycache__/
+**/__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+**/.pytest_cache/
+
+# CMake / C++ build output
+cpp_core/build/
+submission/cpp_core/build/
+**/CMakeFiles/
+**/CMakeCache.txt
+**/cmake_install.cmake
+**/compile_commands.json
+**/CTestTestfile.cmake
+**/Testing/
+*.o
+*.obj
+*.a
+*.so
+*.dylib
+*.dll
+*.dSYM/
+
+# clangd / compiler index
+cpp_core/.cache/
+submission/cpp_core/.cache/
+.cache/
+
+# Frontend dependencies and build output
 frontend/node_modules/
 frontend/dist/
+frontend/.vite/
 frontend/*.tsbuildinfo
 frontend/vite.config.js
 frontend/vite.config.d.ts
-backend/__pycache__/
-backend/tests/__pycache__/
-*.pyc
-.DS_Store
+submission/frontend/node_modules/
+submission/frontend/dist/
+submission/frontend/.vite/
+submission/frontend/*.tsbuildinfo
+submission/frontend/vite.config.js
+submission/frontend/vite.config.d.ts
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
