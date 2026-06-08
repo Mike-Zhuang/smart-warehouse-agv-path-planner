@@ -10,6 +10,13 @@ cmake -S cpp_core -B cpp_core/build
 cmake --build cpp_core/build
 ```
 
+Windows 使用 vcpkg 安装 `nlohmann_json` 时：
+
+```powershell
+cmake -S cpp_core -B cpp_core/build -A x64 -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake -DVCPKG_TARGET_TRIPLET=x64-windows
+cmake --build cpp_core/build --config Release
+```
+
 ## 测试
 
 ```bash
@@ -27,10 +34,14 @@ ctest --test-dir cpp_core/build --output-on-failure
 
 ## Web 前端
 
-首次运行先安装前端依赖：
+推荐使用 Python 3.12、Node.js 18/20 LTS 和 CMake。首次运行先安装依赖：
 
 ```bash
-npm --prefix frontend install
+python -m venv .venv
+# Windows: .\.venv\Scripts\Activate.ps1
+# macOS / Linux: source .venv/bin/activate
+python -m pip install -r backend/requirements.txt
+npm --prefix frontend ci
 ```
 
 启动本地接口和网页：
