@@ -14,6 +14,8 @@ Windows 使用 vcpkg 安装 `nlohmann_json` 时：
 
 ```powershell
 cmake -S cpp_core -B cpp_core/build -A x64 -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake -DVCPKG_TARGET_TRIPLET=x64-windows
+# Windows ARM64 改用：
+# cmake -S cpp_core -B cpp_core/build -A ARM64 -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake -DVCPKG_TARGET_TRIPLET=arm64-windows
 cmake --build cpp_core/build --config Release
 ```
 
