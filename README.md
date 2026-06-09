@@ -19,6 +19,12 @@ cmake -S cpp_core -B cpp_core/build -A x64 -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scrip
 cmake --build cpp_core/build --config Release
 ```
 
+如果 vcpkg 不在 `C:\vcpkg`，需要把 `C:/vcpkg/scripts/buildsystems/vcpkg.cmake` 改成实际安装路径。CMake 下载地址：
+
+```text
+https://cmake.org/download/
+```
+
 ## 测试
 
 ```bash
@@ -45,6 +51,8 @@ python -m venv .venv
 python -m pip install -r backend/requirements.txt
 npm --prefix frontend ci
 ```
+
+Windows 上如果 `py` 可用，也可以用 `py -3.12 -m venv .venv` 指定 Python 3.12；如果没有 `npm`，先安装 Node.js LTS：https://nodejs.org/
 
 启动本地接口和网页：
 

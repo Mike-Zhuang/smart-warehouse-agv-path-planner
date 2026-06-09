@@ -12,6 +12,12 @@
 - Visual Studio 2022 C++ 构建工具
 - vcpkg 安装 `nlohmann_json`
 
+如果没有 CMake，下载安装：
+
+```text
+https://cmake.org/download/
+```
+
 如果没有 `npm`，安装 Node.js LTS：
 
 ```text
@@ -30,6 +36,8 @@ cd C:\vcpkg
 # .\vcpkg install nlohmann-json:arm64-windows
 ```
 
+如果 vcpkg 不安装在 `C:\vcpkg`，下面 CMake 命令中的 `C:/vcpkg/scripts/buildsystems/vcpkg.cmake` 也要改成自己的实际路径。
+
 ## 安装依赖
 
 在本目录下执行：
@@ -39,6 +47,12 @@ py -3.12 -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -r backend/requirements.txt
 npm --prefix frontend ci
+```
+
+如果 `py` 命令不可用，先确认 `python --version` 是 Python 3.12，再改用：
+
+```powershell
+python -m venv .venv
 ```
 
 macOS / Linux 激活虚拟环境使用：
