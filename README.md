@@ -3,6 +3,9 @@
 本项目使用 C++17 实现智能仓储机器人的路径规划核心。当前工程已经完成地图建模、
 JSON 输入解析、字符地图输出、单车 A*、Dijkstra、往返路径规划和多车 CBS 协同规划。
 
+- GitHub 仓库：[Mike-Zhuang/smart-warehouse-agv-path-planner](https://github.com/Mike-Zhuang/smart-warehouse-agv-path-planner)
+- 线上演示：<https://agv.mikezhuang.cn>，已成功部署到服务器。
+
 ## 构建
 
 ```bash

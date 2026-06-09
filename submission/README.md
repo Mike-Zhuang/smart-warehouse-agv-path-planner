@@ -2,6 +2,9 @@
 
 本目录包含源代码、示例地图、前端资源和一个已编译的 C++ 核心执行文件。
 
+- GitHub 仓库：[Mike-Zhuang/smart-warehouse-agv-path-planner](https://github.com/Mike-Zhuang/smart-warehouse-agv-path-planner)
+- 线上演示：<https://agv.mikezhuang.cn>，已成功部署到服务器。
+
 ## 环境准备
 
 建议使用：
