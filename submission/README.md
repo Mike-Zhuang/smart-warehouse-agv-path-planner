@@ -5,6 +5,11 @@
 - GitHub 仓库：[Mike-Zhuang/smart-warehouse-agv-path-planner](https://github.com/Mike-Zhuang/smart-warehouse-agv-path-planner)
 - 线上演示：<https://agv.mikezhuang.cn>，已成功部署到服务器。
 
+提交包内也提供了线上演示快捷入口：
+
+- Windows 可双击 `打开线上演示.url`
+- 其他系统可打开 `打开线上演示.html`
+
 ## 环境准备
 
 建议使用：
